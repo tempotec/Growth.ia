@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-sand text-ink antialiased;
+  background-image:
+    radial-gradient(circle at top left, rgba(216, 228, 204, 0.7), transparent 28%),
+    radial-gradient(circle at top right, rgba(238, 242, 255, 0.85), transparent 32%);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

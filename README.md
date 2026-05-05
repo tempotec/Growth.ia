@@ -35,6 +35,36 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
+## Frontend minimo
+
+O frontend de validacao da experiencia fica em `frontend/`.
+
+Variaveis de ambiente opcionais do frontend:
+
+- `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000`
+- `NEXT_PUBLIC_USE_MOCK_API=false`
+
+Para rodar localmente:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Se o backend ainda nao estiver disponivel, voce pode usar mock local:
+
+```bash
+cd frontend
+copy .env.example .env.local
+```
+
+Depois altere:
+
+```bash
+NEXT_PUBLIC_USE_MOCK_API=true
+```
+
 ## Testes
 
 ```bash
@@ -53,6 +83,7 @@ para um arquivo de service account com permissao para consultar datasets publico
 - Fase 3 concluida: tools, LLM service, agente LangGraph e testes unitarios da camada agentic.
 - Fase 4 concluida: camada HTTP com FastAPI, endpoint /ask, healthcheck e testes de endpoint.
 - Fase 5A.1 + 5B concluida: validacao real manual, logs estruturados, request_id e timing minimo.
+- UI minima concluida: interface de chat em Next.js para validar a experiencia antes do dashboard.
 
 Neste momento, o repositorio contem a base do backend Glacier AI, incluindo
 configuracao centralizada, schemas, camada de dados, fluxo agentic, camada HTTP
