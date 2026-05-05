@@ -23,8 +23,13 @@ def test_bigquery_service_initializes_default_client_with_settings(
     valid_env: dict[str, str],
 ) -> None:
     mock_client = Mock()
+    mock_settings = Mock()
+    mock_settings.google_application_credentials = valid_env[
+        "GOOGLE_APPLICATION_CREDENTIALS"
+    ]
 
     with patch("app.services.bigquery_service.get_settings") as mock_get_settings:
+        mock_get_settings.return_value = mock_settings
         with patch(
             "app.services.bigquery_service.bigquery.Client",
             return_value=mock_client,

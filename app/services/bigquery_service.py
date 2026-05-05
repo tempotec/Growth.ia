@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from google.api_core.exceptions import GoogleAPIError
@@ -21,8 +22,10 @@ class BigQueryService:
 
     def __init__(self, client: bigquery.Client | None = None) -> None:
         if client is None:
-            # Force settings validation before the client is created.
-            get_settings()
+            settings = get_settings()
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = (
+                settings.google_application_credentials
+            )
         self._client = client or bigquery.Client()
         self._logger = get_logger(__name__)
 
