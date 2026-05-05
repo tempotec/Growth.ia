@@ -14,7 +14,7 @@ from app.agent.nodes import (
     should_execute_tool,
 )
 from app.agent.state import AgentState
-from app.repositories.analytics_repository import AnalyticsRepository
+from app.services.analytics_read_service import AnalyticsReadService
 from app.services.llm_service import LLMService
 from app.tools import TOOL_REGISTRY
 
@@ -22,7 +22,7 @@ from app.tools import TOOL_REGISTRY
 def build_agent_graph(
     *,
     llm_service: LLMService | None = None,
-    repository: AnalyticsRepository | None = None,
+    repository: AnalyticsReadService | None = None,
     tool_registry: dict | None = None,
 ):
     """Build and compile the Glacier AI LangGraph workflow."""

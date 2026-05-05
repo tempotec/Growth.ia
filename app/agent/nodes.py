@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Callable
 
 from app.agent.state import AgentState
-from app.repositories.analytics_repository import AnalyticsRepository
+from app.services.analytics_read_service import AnalyticsReadService
 from app.services.llm_service import LLMService, LLMServiceError
 from app.tools import TOOL_REGISTRY
 
@@ -75,7 +75,7 @@ def execute_tool(
     state: AgentState,
     *,
     tool_registry: dict[str, ToolCallable] | None = None,
-    repository: AnalyticsRepository | None = None,
+    repository: AnalyticsReadService | None = None,
 ) -> AgentState:
     """Execute the selected tool and persist its structured result."""
 

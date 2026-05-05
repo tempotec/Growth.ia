@@ -7,7 +7,10 @@ from datetime import datetime
 
 import pytest
 
-from app.repositories.local_cache_repository import LocalCacheRepository
+from app.repositories.local_cache_repository import (
+    LocalCacheRepository,
+    LocalCacheSnapshotNotFoundError,
+)
 from app.services.sqlite_service import SQLiteService
 
 
@@ -52,6 +55,8 @@ def test_local_cache_repository_reads_latest_snapshot_only(
     repository.write_channel_performance_snapshot(
         [
             {
+                "start_date": "2026-04-06",
+                "end_date": "2026-05-05",
                 "traffic_source": "Organic",
                 "users": 900,
                 "orders": 60,
@@ -64,6 +69,8 @@ def test_local_cache_repository_reads_latest_snapshot_only(
     repository.write_channel_performance_snapshot(
         [
             {
+                "start_date": "2026-04-06",
+                "end_date": "2026-05-05",
                 "traffic_source": "Organic",
                 "users": 1000,
                 "orders": 80,
@@ -71,6 +78,8 @@ def test_local_cache_repository_reads_latest_snapshot_only(
                 "conversion_rate": 0.08,
             },
             {
+                "start_date": "2026-04-06",
+                "end_date": "2026-05-05",
                 "traffic_source": "Search",
                 "users": 700,
                 "orders": 42,
@@ -86,6 +95,8 @@ def test_local_cache_repository_reads_latest_snapshot_only(
     assert latest_rows == [
         {
             "snapshot_at": latest_snapshot_at.isoformat(),
+            "start_date": "2026-04-06",
+            "end_date": "2026-05-05",
             "traffic_source": "Organic",
             "users": 1000,
             "orders": 80,
@@ -94,6 +105,8 @@ def test_local_cache_repository_reads_latest_snapshot_only(
         },
         {
             "snapshot_at": latest_snapshot_at.isoformat(),
+            "start_date": "2026-04-06",
+            "end_date": "2026-05-05",
             "traffic_source": "Search",
             "users": 700,
             "orders": 42,
@@ -111,15 +124,35 @@ def test_local_cache_repository_writes_and_reads_other_snapshot_views(
 
     repository.write_revenue_by_source_snapshot(
         [
-            {"traffic_source": "Organic", "revenue": 5500.0},
-            {"traffic_source": "Search", "revenue": 3200.0},
+            {
+                "start_date": "2026-04-06",
+                "end_date": "2026-05-05",
+                "traffic_source": "Organic",
+                "revenue": 5500.0,
+            },
+            {
+                "start_date": "2026-04-06",
+                "end_date": "2026-05-05",
+                "traffic_source": "Search",
+                "revenue": 3200.0,
+            },
         ],
         snapshot_at,
     )
     repository.write_users_by_source_snapshot(
         [
-            {"traffic_source": "Organic", "users": 1000},
-            {"traffic_source": "Search", "users": 700},
+            {
+                "start_date": "2026-04-06",
+                "end_date": "2026-05-05",
+                "traffic_source": "Organic",
+                "users": 1000,
+            },
+            {
+                "start_date": "2026-04-06",
+                "end_date": "2026-05-05",
+                "traffic_source": "Search",
+                "users": 700,
+            },
         ],
         snapshot_at,
     )
@@ -127,11 +160,15 @@ def test_local_cache_repository_writes_and_reads_other_snapshot_views(
     assert repository.get_latest_revenue_by_source_snapshot() == [
         {
             "snapshot_at": snapshot_at.isoformat(),
+            "start_date": "2026-04-06",
+            "end_date": "2026-05-05",
             "traffic_source": "Organic",
             "revenue": 5500.0,
         },
         {
             "snapshot_at": snapshot_at.isoformat(),
+            "start_date": "2026-04-06",
+            "end_date": "2026-05-05",
             "traffic_source": "Search",
             "revenue": 3200.0,
         },
@@ -139,12 +176,123 @@ def test_local_cache_repository_writes_and_reads_other_snapshot_views(
     assert repository.get_latest_users_by_source_snapshot() == [
         {
             "snapshot_at": snapshot_at.isoformat(),
+            "start_date": "2026-04-06",
+            "end_date": "2026-05-05",
             "traffic_source": "Organic",
             "users": 1000,
         },
         {
             "snapshot_at": snapshot_at.isoformat(),
+            "start_date": "2026-04-06",
+            "end_date": "2026-05-05",
             "traffic_source": "Search",
             "users": 700,
         },
     ]
+
+
+def test_local_cache_repository_returns_contract_compatible_payloads(
+    sqlite_service: SQLiteService,
+) -> None:
+    repository = LocalCacheRepository(sqlite_service=sqlite_service)
+    snapshot_at = datetime(2026, 5, 5, 13, 0, 0)
+
+    repository.write_channel_performance_snapshot(
+        [
+            {
+                "start_date": "2026-04-06",
+                "end_date": "2026-05-05",
+                "traffic_source": "Organic",
+                "users": 1000,
+                "orders": 80,
+                "revenue": 5500.0,
+                "conversion_rate": 0.08,
+            }
+        ],
+        snapshot_at,
+    )
+    repository.write_revenue_by_source_snapshot(
+        [
+            {
+                "start_date": "2026-04-06",
+                "end_date": "2026-05-05",
+                "traffic_source": "Organic",
+                "revenue": 5500.0,
+            }
+        ],
+        snapshot_at,
+    )
+    repository.write_users_by_source_snapshot(
+        [
+            {
+                "start_date": "2026-04-06",
+                "end_date": "2026-05-05",
+                "traffic_source": "Organic",
+                "users": 1000,
+            }
+        ],
+        snapshot_at,
+    )
+
+    assert repository.get_users_by_source("Organic") == {
+        "traffic_source": "Organic",
+        "users": 1000,
+        "start_date": "2026-04-06",
+        "end_date": "2026-05-05",
+    }
+    assert repository.get_revenue_by_source() == [
+        {
+            "traffic_source": "Organic",
+            "revenue": 5500.0,
+            "start_date": "2026-04-06",
+            "end_date": "2026-05-05",
+        }
+    ]
+    assert repository.get_channel_performance_summary() == [
+        {
+            "traffic_source": "Organic",
+            "users": 1000,
+            "orders": 80,
+            "revenue": 5500.0,
+            "conversion_rate": 0.08,
+            "start_date": "2026-04-06",
+            "end_date": "2026-05-05",
+        }
+    ]
+
+
+def test_local_cache_repository_raises_when_snapshot_is_missing(
+    sqlite_service: SQLiteService,
+) -> None:
+    repository = LocalCacheRepository(sqlite_service=sqlite_service)
+
+    with pytest.raises(LocalCacheSnapshotNotFoundError) as exc_info:
+        repository.get_channel_performance_summary()
+
+    assert "Run the cache sync first" in str(exc_info.value)
+
+
+def test_local_cache_repository_raises_for_missing_requested_date_range(
+    sqlite_service: SQLiteService,
+) -> None:
+    repository = LocalCacheRepository(sqlite_service=sqlite_service)
+    snapshot_at = datetime(2026, 5, 5, 13, 0, 0)
+    repository.write_revenue_by_source_snapshot(
+        [
+            {
+                "start_date": "2026-04-06",
+                "end_date": "2026-05-05",
+                "traffic_source": "Organic",
+                "revenue": 5500.0,
+            }
+        ],
+        snapshot_at,
+    )
+
+    with pytest.raises(LocalCacheSnapshotNotFoundError) as exc_info:
+        repository.get_revenue_by_source(
+            start_date=datetime(2026, 4, 1).date(),
+            end_date=datetime(2026, 4, 30).date(),
+        )
+
+    assert "requested date range" in str(exc_info.value)

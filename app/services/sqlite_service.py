@@ -12,6 +12,8 @@ from app.core.cache_config import get_cache_settings
 SCHEMA_STATEMENTS = """
 CREATE TABLE IF NOT EXISTS channel_performance_snapshot (
     snapshot_at TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
     traffic_source TEXT NOT NULL,
     users INTEGER NOT NULL,
     orders INTEGER NOT NULL,
@@ -21,12 +23,16 @@ CREATE TABLE IF NOT EXISTS channel_performance_snapshot (
 
 CREATE TABLE IF NOT EXISTS revenue_by_source_snapshot (
     snapshot_at TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
     traffic_source TEXT NOT NULL,
     revenue REAL NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS users_by_source_snapshot (
     snapshot_at TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
     traffic_source TEXT NOT NULL,
     users INTEGER NOT NULL
 );
@@ -40,6 +46,12 @@ ON revenue_by_source_snapshot (snapshot_at);
 CREATE INDEX IF NOT EXISTS idx_users_by_source_snapshot_at
 ON users_by_source_snapshot (snapshot_at);
 """
+
+REQUIRED_TEXT_COLUMNS = {
+    "channel_performance_snapshot": ("start_date", "end_date"),
+    "revenue_by_source_snapshot": ("start_date", "end_date"),
+    "users_by_source_snapshot": ("start_date", "end_date"),
+}
 
 
 class SQLiteService:
@@ -69,6 +81,7 @@ class SQLiteService:
             self._database_path.parent.mkdir(parents=True, exist_ok=True)
         with self._connection_context() as connection:
             connection.executescript(SCHEMA_STATEMENTS)
+            self._ensure_required_columns(connection)
             connection.commit()
 
     def execute_many(self, statement: str, rows: list[tuple[Any, ...]]) -> None:
@@ -102,3 +115,17 @@ class SQLiteService:
         connection = sqlite3.connect(self._database_path)
         connection.row_factory = sqlite3.Row
         return connection
+
+    def _ensure_required_columns(self, connection: sqlite3.Connection) -> None:
+        """Add newer required columns when opening an older cache database."""
+
+        for table_name, column_names in REQUIRED_TEXT_COLUMNS.items():
+            existing_columns = {
+                row["name"]
+                for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+            }
+            for column_name in column_names:
+                if column_name not in existing_columns:
+                    connection.execute(
+                        f"ALTER TABLE {table_name} ADD COLUMN {column_name} TEXT"
+                    )

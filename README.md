@@ -29,6 +29,7 @@ Use o arquivo `.env.example` como referencia:
 - `GOOGLE_APPLICATION_CREDENTIALS`
 - `LOCAL_CACHE_DB_PATH`
 - `CACHE_REFRESH_MINUTES`
+- `DATA_SOURCE_MODE`
 
 ## Instalacao
 
@@ -99,6 +100,17 @@ Configuracoes relevantes:
 
 - `LOCAL_CACHE_DB_PATH=data/glacier_cache.db`
 - `CACHE_REFRESH_MINUTES=10`
+- `DATA_SOURCE_MODE=bigquery_direct`
+
+Modos de leitura:
+
+- `bigquery_direct`: le diretamente do BigQuery
+- `local_cache`: le do snapshot mais recente no SQLite local
+
+Recomendacao pratica:
+
+- use `local_cache` para UI, dashboard, KPIs e consultas mais estaveis
+- use `bigquery_direct` quando precisar consultar diretamente a fonte de verdade
 
 Para sincronizar snapshots manualmente:
 
@@ -107,6 +119,10 @@ python scripts/sync_bigquery_cache.py
 ```
 
 O arquivo SQLite padrao sera criado em `data/glacier_cache.db`.
+
+Se `DATA_SOURCE_MODE=local_cache` e ainda nao houver snapshot compativel,
+o backend retornara um erro controlado e claro. Nao existe fallback automatico
+para BigQuery nesta fase.
 
 ## Status
 

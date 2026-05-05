@@ -179,6 +179,7 @@ def isolate_settings_cache(monkeypatch: pytest.MonkeyPatch) -> None:
         "GOOGLE_APPLICATION_CREDENTIALS",
         "LOCAL_CACHE_DB_PATH",
         "CACHE_REFRESH_MINUTES",
+        "DATA_SOURCE_MODE",
     ):
         monkeypatch.delenv(env_var, raising=False)
 

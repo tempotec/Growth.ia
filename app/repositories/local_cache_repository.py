@@ -2,10 +2,26 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
+from datetime import date, datetime
+from typing import Any, get_args
 
+from app.schemas.analytics import AllowedTrafficSource
 from app.services.sqlite_service import SQLiteService
+
+ALLOWED_TRAFFIC_SOURCES = tuple(get_args(AllowedTrafficSource))
+TRAFFIC_SOURCE_MAP = {source.lower(): source for source in ALLOWED_TRAFFIC_SOURCES}
+
+
+class LocalCacheRepositoryError(Exception):
+    """Base exception for local cache reads and writes."""
+
+
+class LocalCacheSnapshotNotFoundError(LocalCacheRepositoryError):
+    """Raised when the local cache does not contain a usable snapshot."""
+
+
+class InvalidTrafficSourceError(LocalCacheRepositoryError):
+    """Raised when a traffic source is not supported in the V1 scope."""
 
 
 class LocalCacheRepository:
@@ -26,16 +42,20 @@ class LocalCacheRepository:
             """
             INSERT INTO channel_performance_snapshot (
                 snapshot_at,
+                start_date,
+                end_date,
                 traffic_source,
                 users,
                 orders,
                 revenue,
                 conversion_rate
-            ) VALUES (?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
                     snapshot_at.isoformat(),
+                    row["start_date"],
+                    row["end_date"],
                     row["traffic_source"],
                     int(row["users"]),
                     int(row["orders"]),
@@ -57,13 +77,17 @@ class LocalCacheRepository:
             """
             INSERT INTO revenue_by_source_snapshot (
                 snapshot_at,
+                start_date,
+                end_date,
                 traffic_source,
                 revenue
-            ) VALUES (?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?)
             """,
             [
                 (
                     snapshot_at.isoformat(),
+                    row["start_date"],
+                    row["end_date"],
                     row["traffic_source"],
                     float(row["revenue"]),
                 )
@@ -82,13 +106,17 @@ class LocalCacheRepository:
             """
             INSERT INTO users_by_source_snapshot (
                 snapshot_at,
+                start_date,
+                end_date,
                 traffic_source,
                 users
-            ) VALUES (?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?)
             """,
             [
                 (
                     snapshot_at.isoformat(),
+                    row["start_date"],
+                    row["end_date"],
                     row["traffic_source"],
                     int(row["users"]),
                 )
@@ -96,13 +124,131 @@ class LocalCacheRepository:
             ],
         )
 
-    def get_latest_channel_performance_snapshot(self) -> list[dict[str, Any]]:
-        """Return the most recent channel performance snapshot."""
+    def get_channel_performance_summary(
+        self,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return the most recent cached channel performance snapshot."""
 
-        return self._sqlite_service.fetch_all(
+        rows = self._fetch_latest_rows(
             """
             SELECT
                 snapshot_at,
+                start_date,
+                end_date,
+                traffic_source,
+                users,
+                orders,
+                revenue,
+                conversion_rate
+            FROM channel_performance_snapshot
+            WHERE snapshot_at = (
+                SELECT MAX(snapshot_at)
+                FROM channel_performance_snapshot
+            )
+            ORDER BY conversion_rate DESC, revenue DESC, traffic_source ASC
+            """
+        )
+        self._ensure_matching_date_range(rows, start_date, end_date)
+        return [
+            {
+                "traffic_source": row["traffic_source"],
+                "users": int(row["users"]),
+                "orders": int(row["orders"]),
+                "revenue": float(row["revenue"]),
+                "conversion_rate": float(row["conversion_rate"]),
+                "start_date": row["start_date"],
+                "end_date": row["end_date"],
+            }
+            for row in rows
+        ]
+
+    def get_revenue_by_source(
+        self,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return the most recent cached revenue by source snapshot."""
+
+        rows = self._fetch_latest_rows(
+            """
+            SELECT
+                snapshot_at,
+                start_date,
+                end_date,
+                traffic_source,
+                revenue
+            FROM revenue_by_source_snapshot
+            WHERE snapshot_at = (
+                SELECT MAX(snapshot_at)
+                FROM revenue_by_source_snapshot
+            )
+            ORDER BY revenue DESC, traffic_source ASC
+            """
+        )
+        self._ensure_matching_date_range(rows, start_date, end_date)
+        return [
+            {
+                "traffic_source": row["traffic_source"],
+                "revenue": float(row["revenue"]),
+                "start_date": row["start_date"],
+                "end_date": row["end_date"],
+            }
+            for row in rows
+        ]
+
+    def get_users_by_source(
+        self,
+        traffic_source: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> dict[str, Any]:
+        """Return the most recent cached users by source snapshot."""
+
+        normalized_source = self._normalize_traffic_source(traffic_source)
+        rows = self._fetch_latest_rows(
+            """
+            SELECT
+                snapshot_at,
+                start_date,
+                end_date,
+                traffic_source,
+                users
+            FROM users_by_source_snapshot
+            WHERE snapshot_at = (
+                SELECT MAX(snapshot_at)
+                FROM users_by_source_snapshot
+            )
+            ORDER BY users DESC, traffic_source ASC
+            """
+        )
+        self._ensure_matching_date_range(rows, start_date, end_date)
+        for row in rows:
+            if row["traffic_source"] == normalized_source:
+                return {
+                    "traffic_source": normalized_source,
+                    "users": int(row["users"]),
+                    "start_date": row["start_date"],
+                    "end_date": row["end_date"],
+                }
+
+        return {
+            "traffic_source": normalized_source,
+            "users": 0,
+            "start_date": rows[0]["start_date"],
+            "end_date": rows[0]["end_date"],
+        }
+
+    def get_latest_channel_performance_snapshot(self) -> list[dict[str, Any]]:
+        """Return raw rows from the most recent channel performance snapshot."""
+
+        return self._fetch_latest_rows(
+            """
+            SELECT
+                snapshot_at,
+                start_date,
+                end_date,
                 traffic_source,
                 users,
                 orders,
@@ -118,12 +264,14 @@ class LocalCacheRepository:
         )
 
     def get_latest_revenue_by_source_snapshot(self) -> list[dict[str, Any]]:
-        """Return the most recent revenue by source snapshot."""
+        """Return raw rows from the most recent revenue by source snapshot."""
 
-        return self._sqlite_service.fetch_all(
+        return self._fetch_latest_rows(
             """
             SELECT
                 snapshot_at,
+                start_date,
+                end_date,
                 traffic_source,
                 revenue
             FROM revenue_by_source_snapshot
@@ -136,12 +284,14 @@ class LocalCacheRepository:
         )
 
     def get_latest_users_by_source_snapshot(self) -> list[dict[str, Any]]:
-        """Return the most recent users by source snapshot."""
+        """Return raw rows from the most recent users by source snapshot."""
 
-        return self._sqlite_service.fetch_all(
+        return self._fetch_latest_rows(
             """
             SELECT
                 snapshot_at,
+                start_date,
+                end_date,
                 traffic_source,
                 users
             FROM users_by_source_snapshot
@@ -152,3 +302,50 @@ class LocalCacheRepository:
             ORDER BY users DESC, traffic_source ASC
             """
         )
+
+    def _fetch_latest_rows(self, statement: str) -> list[dict[str, Any]]:
+        """Read the most recent snapshot rows for a materialized view."""
+
+        rows = self._sqlite_service.fetch_all(statement)
+        if not rows:
+            raise LocalCacheSnapshotNotFoundError(
+                "No local cache snapshot is available yet. Run the cache sync first."
+            )
+        return rows
+
+    def _ensure_matching_date_range(
+        self,
+        rows: list[dict[str, Any]],
+        start_date: date | None,
+        end_date: date | None,
+    ) -> None:
+        """Ensure the cached snapshot matches the requested date range."""
+
+        if start_date is None and end_date is None:
+            return
+
+        snapshot_start_date = rows[0]["start_date"]
+        snapshot_end_date = rows[0]["end_date"]
+        requested_start_date = start_date.isoformat() if start_date is not None else None
+        requested_end_date = end_date.isoformat() if end_date is not None else None
+
+        if (
+            requested_start_date is not None
+            and requested_start_date != snapshot_start_date
+        ) or (
+            requested_end_date is not None and requested_end_date != snapshot_end_date
+        ):
+            raise LocalCacheSnapshotNotFoundError(
+                "No local cache snapshot is available for the requested date range."
+            )
+
+    def _normalize_traffic_source(self, traffic_source: str) -> str:
+        """Normalize and validate supported traffic source values."""
+
+        normalized = TRAFFIC_SOURCE_MAP.get(traffic_source.strip().lower())
+        if normalized is None:
+            allowed_values = ", ".join(ALLOWED_TRAFFIC_SOURCES)
+            raise InvalidTrafficSourceError(
+                f"Unsupported traffic_source. Allowed values: {allowed_values}."
+            )
+        return normalized

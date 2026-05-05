@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DataSourceMode = Literal["bigquery_direct", "local_cache"]
 
 
 class CacheSettings(BaseSettings):
@@ -17,6 +20,10 @@ class CacheSettings(BaseSettings):
         alias="LOCAL_CACHE_DB_PATH",
     )
     cache_refresh_minutes: int = Field(default=10, alias="CACHE_REFRESH_MINUTES")
+    data_source_mode: DataSourceMode = Field(
+        default="bigquery_direct",
+        alias="DATA_SOURCE_MODE",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
