@@ -3,10 +3,78 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
+import types
 
 import pytest
 
 from app.core.config import get_settings
+
+
+def _install_google_bigquery_test_shim() -> None:
+    """Install a minimal BigQuery shim when the package is unavailable."""
+
+    google_module = sys.modules.setdefault("google", types.ModuleType("google"))
+    cloud_module = sys.modules.setdefault(
+        "google.cloud", types.ModuleType("google.cloud")
+    )
+    api_core_module = sys.modules.setdefault(
+        "google.api_core", types.ModuleType("google.api_core")
+    )
+    exceptions_module = sys.modules.setdefault(
+        "google.api_core.exceptions",
+        types.ModuleType("google.api_core.exceptions"),
+    )
+    bigquery_module = types.ModuleType("google.cloud.bigquery")
+
+    class GoogleAPIError(Exception):
+        """Fallback Google API error used in unit tests."""
+
+    class ScalarQueryParameter:
+        """Fallback scalar query parameter."""
+
+        def __init__(self, name: str, type_: str, value: object) -> None:
+            self.name = name
+            self.type_ = type_
+            self.value = value
+
+    class ArrayQueryParameter:
+        """Fallback array query parameter."""
+
+        def __init__(self, name: str, type_: str, values: list[object]) -> None:
+            self.name = name
+            self.type_ = type_
+            self.values = values
+
+    class QueryJobConfig:
+        """Fallback query job config."""
+
+        def __init__(self, query_parameters: list[object] | None = None) -> None:
+            self.query_parameters = query_parameters or []
+
+    class Client:
+        """Fallback BigQuery client placeholder."""
+
+        def query(self, query: str, job_config: QueryJobConfig | None = None) -> None:
+            raise NotImplementedError("BigQuery client shim should be mocked in tests.")
+
+    exceptions_module.GoogleAPIError = GoogleAPIError
+    api_core_module.exceptions = exceptions_module
+    bigquery_module.ArrayQueryParameter = ArrayQueryParameter
+    bigquery_module.Client = Client
+    bigquery_module.QueryJobConfig = QueryJobConfig
+    bigquery_module.ScalarQueryParameter = ScalarQueryParameter
+    cloud_module.bigquery = bigquery_module
+    google_module.cloud = cloud_module
+    google_module.api_core = api_core_module
+
+    sys.modules["google.cloud.bigquery"] = bigquery_module
+
+
+try:
+    from google.cloud import bigquery as _bigquery  # noqa: F401
+except ImportError:
+    _install_google_bigquery_test_shim()
 
 
 @pytest.fixture(autouse=True)
