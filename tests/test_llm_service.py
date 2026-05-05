@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from unittest.mock import Mock, patch
 
 import pytest
@@ -89,3 +90,39 @@ def test_generate_answer_raises_controlled_error_when_completion_fails() -> None
             tool_result=[],
             out_of_scope_reason=None,
         )
+
+
+def test_validate_connectivity_returns_model_reply() -> None:
+    client = Mock()
+    client.chat.completions.create.return_value = _build_chat_response("OK")
+    service = LLMService(client=client, model="test-model")
+
+    result = service.validate_connectivity()
+
+    assert result == "OK"
+
+
+def test_parse_question_emits_observability_logs(caplog) -> None:
+    client = Mock()
+    client.chat.completions.create.return_value = _build_chat_response(
+        json.dumps(
+            {
+                "intent": "traffic_volume_by_source",
+                "traffic_source": "Search",
+                "date_range": {
+                    "start_date": "2026-04-01",
+                    "end_date": "2026-04-30",
+                },
+                "needs_data": True,
+                "out_of_scope_reason": None,
+            }
+        )
+    )
+    service = LLMService(client=client, model="test-model")
+
+    with caplog.at_level(logging.INFO):
+        service.parse_question("Como foi o volume de Search?")
+
+    log_text = " ".join(caplog.messages)
+    assert "event=llm_parse_started" in log_text
+    assert "event=llm_parse_completed" in log_text

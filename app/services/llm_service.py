@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from openai import OpenAI
@@ -14,6 +15,7 @@ from app.agent.prompts import (
     build_parse_user_prompt,
 )
 from app.core.config import get_settings
+from app.core.logging import elapsed_ms, get_logger, log_event, short_text, start_timer
 from app.schemas.analytics import ParsedQuestion
 
 
@@ -30,10 +32,19 @@ class LLMService:
             settings = get_settings()
         self._model = model or settings.openai_model
         self._client = client or OpenAI(api_key=settings.openai_api_key)
+        self._logger = get_logger(__name__)
 
     def parse_question(self, question: str) -> ParsedQuestion:
         """Parse a natural-language question into a structured intent payload."""
 
+        request_start = start_timer()
+        log_event(
+            self._logger,
+            logging.INFO,
+            "llm_parse_started",
+            model=self._model,
+            question_preview=short_text(question),
+        )
         try:
             response = self._client.chat.completions.create(
                 model=self._model,
@@ -46,8 +57,25 @@ class LLMService:
             )
             content = self._extract_content(response)
             payload = json.loads(content)
-            return ParsedQuestion.model_validate(payload)
+            parsed_question = ParsedQuestion.model_validate(payload)
+            log_event(
+                self._logger,
+                logging.INFO,
+                "llm_parse_completed",
+                model=self._model,
+                duration_ms=elapsed_ms(request_start),
+                intent=parsed_question.intent,
+            )
+            return parsed_question
         except Exception as exc:
+            log_event(
+                self._logger,
+                logging.ERROR,
+                "llm_parse_failed",
+                model=self._model,
+                duration_ms=elapsed_ms(request_start),
+                error_type=type(exc).__name__,
+            )
             raise LLMServiceError("Failed to parse question with the configured LLM.") from exc
 
     def generate_answer(
@@ -60,6 +88,15 @@ class LLMService:
     ) -> str:
         """Generate a final business-friendly answer."""
 
+        request_start = start_timer()
+        log_event(
+            self._logger,
+            logging.INFO,
+            "llm_answer_started",
+            model=self._model,
+            intent=intent,
+            question_preview=short_text(question),
+        )
         try:
             response = self._client.chat.completions.create(
                 model=self._model,
@@ -77,9 +114,69 @@ class LLMService:
                     },
                 ],
             )
-            return self._extract_content(response).strip()
+            answer = self._extract_content(response).strip()
+            log_event(
+                self._logger,
+                logging.INFO,
+                "llm_answer_completed",
+                model=self._model,
+                duration_ms=elapsed_ms(request_start),
+                intent=intent,
+            )
+            return answer
         except Exception as exc:
+            log_event(
+                self._logger,
+                logging.ERROR,
+                "llm_answer_failed",
+                model=self._model,
+                duration_ms=elapsed_ms(request_start),
+                error_type=type(exc).__name__,
+                intent=intent,
+            )
             raise LLMServiceError("Failed to generate final answer with the configured LLM.") from exc
+
+    def validate_connectivity(self) -> str:
+        """Run a cheap connectivity check against the configured model."""
+
+        request_start = start_timer()
+        log_event(
+            self._logger,
+            logging.INFO,
+            "llm_connectivity_check_started",
+            model=self._model,
+        )
+        try:
+            response = self._client.chat.completions.create(
+                model=self._model,
+                temperature=0,
+                max_tokens=10,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": "Reply with exactly OK if you can read this message.",
+                    }
+                ],
+            )
+            result = self._extract_content(response).strip()
+            log_event(
+                self._logger,
+                logging.INFO,
+                "llm_connectivity_check_completed",
+                model=self._model,
+                duration_ms=elapsed_ms(request_start),
+            )
+            return result
+        except Exception as exc:
+            log_event(
+                self._logger,
+                logging.ERROR,
+                "llm_connectivity_check_failed",
+                model=self._model,
+                duration_ms=elapsed_ms(request_start),
+                error_type=type(exc).__name__,
+            )
+            raise LLMServiceError("Failed to validate OpenAI connectivity.") from exc
 
     @staticmethod
     def _extract_content(response: Any) -> str:

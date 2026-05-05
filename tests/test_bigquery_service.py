@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import Mock, patch
 
 import pytest
@@ -68,3 +69,18 @@ def test_run_query_wraps_unexpected_errors() -> None:
         service.run_query("SELECT 1")
 
     assert "Unexpected BigQuery execution failure" in str(exc_info.value)
+
+
+def test_run_query_emits_observability_logs(caplog) -> None:
+    query_job = Mock()
+    query_job.result.return_value = [{"total": 1}]
+    client = Mock()
+    client.query.return_value = query_job
+    service = BigQueryService(client=client)
+
+    with caplog.at_level(logging.INFO):
+        service.run_query("SELECT COUNT(*) AS total FROM users")
+
+    log_text = " ".join(caplog.messages)
+    assert "event=bigquery_query_started" in log_text
+    assert "event=bigquery_query_completed" in log_text

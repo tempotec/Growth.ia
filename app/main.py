@@ -2,17 +2,74 @@
 
 from __future__ import annotations
 
+import logging
+from time import perf_counter
+
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 from app.api.routes import router
+from app.core.logging import (
+    clear_request_id,
+    configure_logging,
+    elapsed_ms,
+    generate_request_id,
+    get_logger,
+    log_event,
+    set_request_id,
+)
 
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
 
+    configure_logging()
     app = FastAPI(title="Glacier AI Backend", version="0.1.0")
+    logger = get_logger(__name__)
+
+    @app.middleware("http")
+    async def observability_middleware(request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID") or generate_request_id()
+        request.state.request_id = request_id
+        set_request_id(request_id)
+        request_start = perf_counter()
+        log_event(
+            logger,
+            logging.INFO,
+            "http_request_started",
+            method=request.method,
+            path=request.url.path,
+        )
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            log_event(
+                logger,
+                logging.ERROR,
+                "http_request_failed",
+                method=request.method,
+                path=request.url.path,
+                duration_ms=elapsed_ms(request_start),
+                error_type=type(exc).__name__,
+            )
+            clear_request_id()
+            raise
+
+        response.headers["X-Request-ID"] = request_id
+        log_event(
+            logger,
+            logging.INFO,
+            "http_request_completed",
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=elapsed_ms(request_start),
+        )
+        clear_request_id()
+        return response
+
     app.include_router(router)
 
     @app.exception_handler(FastAPIHTTPException)

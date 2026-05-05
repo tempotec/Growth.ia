@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException, status
 
 from app.agent.graph import run_agent_question
+from app.core.logging import get_logger, log_event, short_text
 from app.schemas.api import AskRequest, AskResponse
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 OUT_OF_SCOPE_ERROR = "unsupported_intent"
 OUT_OF_SCOPE_MESSAGE = (
@@ -23,15 +27,36 @@ GENERIC_INTERNAL_MESSAGE = "Nao foi possivel processar a solicitacao no momento.
 def ask(payload: AskRequest) -> AskResponse:
     """Execute the Glacier AI agent for a validated question."""
 
+    log_event(
+        logger,
+        logging.INFO,
+        "ask_request_received",
+        question_preview=short_text(payload.question),
+    )
     try:
         final_state = run_agent_question(payload.question)
     except Exception as exc:
+        log_event(
+            logger,
+            logging.ERROR,
+            "ask_request_failed",
+            error_type=type(exc).__name__,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=GENERIC_INTERNAL_MESSAGE,
         ) from exc
 
     response, status_code = _build_response(final_state)
+    log_event(
+        logger,
+        logging.INFO,
+        "ask_request_completed",
+        intent=final_state.get("intent"),
+        tool_name=final_state.get("tool_name"),
+        http_status=status_code,
+        controlled_error=bool(response.error),
+    )
     if status_code != status.HTTP_200_OK:
         raise HTTPException(status_code=status_code, detail=response.model_dump())
     return response
