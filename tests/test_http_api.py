@@ -107,3 +107,19 @@ def test_get_health_returns_ok() -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
     assert "X-Request-ID" in response.headers
+
+
+def test_health_preflight_allows_frontend_origin() -> None:
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"

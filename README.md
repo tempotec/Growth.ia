@@ -6,6 +6,10 @@ Aplicacao full-stack de IA para e-commerce com foco em backend analitico, agente
 
 Backend em Python para um agente analitico de e-commerce usando FastAPI, LangGraph, OpenAI e BigQuery.
 
+As referencias das tabelas essenciais do dataset publico `thelook_ecommerce`
+ficam centralizadas em `app/core/bigquery_tables.py` e sao consumidas pela
+camada de repository.
+
 ## Stack
 
 - Python 3.10+
@@ -21,7 +25,10 @@ Use o arquivo `.env.example` como referencia:
 
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
+- `BACKEND_CORS_ORIGINS`
 - `GOOGLE_APPLICATION_CREDENTIALS`
+- `LOCAL_CACHE_DB_PATH`
+- `CACHE_REFRESH_MINUTES`
 
 ## Instalacao
 
@@ -43,6 +50,10 @@ Variaveis de ambiente opcionais do frontend:
 
 - `NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:8000`
 - `NEXT_PUBLIC_USE_MOCK_API=false`
+
+O backend libera CORS por padrao para `http://localhost:3000` e
+`http://127.0.0.1:3000`. Se voce rodar o frontend em outra origem, ajuste
+`BACKEND_CORS_ORIGINS` com uma lista separada por virgula.
 
 Para rodar localmente:
 
@@ -75,6 +86,27 @@ pytest
 
 O acesso ao BigQuery depende da variavel `GOOGLE_APPLICATION_CREDENTIALS` apontando
 para um arquivo de service account com permissao para consultar datasets publicos.
+
+## Cache local SQLite
+
+O projeto agora possui uma Fase 1 de arquitetura hibrida:
+
+- BigQuery continua como fonte de verdade
+- SQLite guarda snapshots locais para leitura futura pela UI/dashboard
+- nesta fase, o backend principal ainda nao le do cache local por padrao
+
+Configuracoes relevantes:
+
+- `LOCAL_CACHE_DB_PATH=data/glacier_cache.db`
+- `CACHE_REFRESH_MINUTES=10`
+
+Para sincronizar snapshots manualmente:
+
+```bash
+python scripts/sync_bigquery_cache.py
+```
+
+O arquivo SQLite padrao sera criado em `data/glacier_cache.db`.
 
 ## Status
 

@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from app.core.bigquery_tables import ORDER_ITEMS_TABLE, ORDERS_TABLE, USERS_TABLE
 from app.repositories.analytics_repository import (
     ALLOWED_TRAFFIC_SOURCES,
     AnalyticsRepository,
@@ -131,6 +132,9 @@ def test_get_revenue_by_source_passes_allowed_traffic_sources_to_query(
 
     assert "order_revenue AS" in query
     assert "ORDER BY revenue DESC" in query
+    assert f"FROM `{ORDER_ITEMS_TABLE}`" in query
+    assert f"FROM `{ORDERS_TABLE}` AS o" in query
+    assert f"INNER JOIN `{USERS_TABLE}` AS u" in query
     assert parameters[0].name == "traffic_sources"
     assert parameters[0].values == list(ALLOWED_TRAFFIC_SOURCES)
 
@@ -180,6 +184,9 @@ def test_get_channel_performance_summary_query_uses_safe_aggregations(
 
     query, parameters = mock_bigquery_service.run_query.call_args.args
 
+    assert f"FROM `{USERS_TABLE}`" in query
+    assert f"FROM `{ORDERS_TABLE}` AS o" in query
+    assert f"FROM `{ORDER_ITEMS_TABLE}`" in query
     assert "COUNT(DISTINCT o.order_id) AS orders" in query
     assert "WITH source_dim AS" in query
     assert "order_revenue AS" in query

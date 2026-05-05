@@ -7,12 +7,10 @@ from typing import get_args
 
 from google.cloud import bigquery
 
+from app.core.bigquery_tables import ORDER_ITEMS_TABLE, ORDERS_TABLE, USERS_TABLE
 from app.schemas.analytics import AllowedTrafficSource
 from app.services.bigquery_service import BigQueryService
 
-USERS_TABLE = "bigquery-public-data.thelook_ecommerce.users"
-ORDERS_TABLE = "bigquery-public-data.thelook_ecommerce.orders"
-ORDER_ITEMS_TABLE = "bigquery-public-data.thelook_ecommerce.order_items"
 DEFAULT_LOOKBACK_DAYS = 30
 ALLOWED_TRAFFIC_SOURCES = tuple(get_args(AllowedTrafficSource))
 TRAFFIC_SOURCE_MAP = {source.lower(): source for source in ALLOWED_TRAFFIC_SOURCES}

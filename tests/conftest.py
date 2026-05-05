@@ -8,6 +8,7 @@ import types
 
 import pytest
 
+from app.core.cache_config import get_cache_settings
 from app.core.config import get_settings
 
 
@@ -168,6 +169,7 @@ def isolate_settings_cache(monkeypatch: pytest.MonkeyPatch) -> None:
     """Isolate settings resolution between tests."""
 
     get_settings.cache_clear()
+    get_cache_settings.cache_clear()
     runtime_dir = Path.cwd() / ".test_runtime"
     runtime_dir.mkdir(exist_ok=True)
     monkeypatch.chdir(runtime_dir)
@@ -175,12 +177,15 @@ def isolate_settings_cache(monkeypatch: pytest.MonkeyPatch) -> None:
         "OPENAI_API_KEY",
         "OPENAI_MODEL",
         "GOOGLE_APPLICATION_CREDENTIALS",
+        "LOCAL_CACHE_DB_PATH",
+        "CACHE_REFRESH_MINUTES",
     ):
         monkeypatch.delenv(env_var, raising=False)
 
     yield
 
     get_settings.cache_clear()
+    get_cache_settings.cache_clear()
 
 
 @pytest.fixture

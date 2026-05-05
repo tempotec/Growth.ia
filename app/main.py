@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
 from time import perf_counter
 
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -22,12 +24,30 @@ from app.core.logging import (
 )
 
 
+DEFAULT_CORS_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
+
+
+def _get_cors_origins() -> list[str]:
+    """Return normalized CORS origins from a comma-separated env var."""
+
+    configured_origins = os.getenv("BACKEND_CORS_ORIGINS", DEFAULT_CORS_ORIGINS)
+    return [origin.strip() for origin in configured_origins.split(",") if origin.strip()]
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
 
     configure_logging()
     app = FastAPI(title="Glacier AI Backend", version="0.1.0")
     logger = get_logger(__name__)
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_get_cors_origins(),
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.middleware("http")
     async def observability_middleware(request: Request, call_next):
