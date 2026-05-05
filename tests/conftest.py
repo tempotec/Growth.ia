@@ -71,10 +71,96 @@ def _install_google_bigquery_test_shim() -> None:
     sys.modules["google.cloud.bigquery"] = bigquery_module
 
 
+def _install_openai_test_shim() -> None:
+    """Install a minimal OpenAI shim when the package is unavailable."""
+
+    openai_module = types.ModuleType("openai")
+
+    class _Completions:
+        def create(self, *args, **kwargs) -> None:
+            raise NotImplementedError("OpenAI client shim should be mocked in tests.")
+
+    class _Chat:
+        def __init__(self) -> None:
+            self.completions = _Completions()
+
+    class OpenAI:
+        def __init__(self, *args, **kwargs) -> None:
+            self.chat = _Chat()
+
+    openai_module.OpenAI = OpenAI
+    sys.modules["openai"] = openai_module
+
+
+def _install_langgraph_test_shim() -> None:
+    """Install a minimal LangGraph shim when the package is unavailable."""
+
+    langgraph_module = types.ModuleType("langgraph")
+    graph_module = types.ModuleType("langgraph.graph")
+    start_token = "__start__"
+    end_token = "__end__"
+
+    class CompiledGraph:
+        def __init__(self, nodes: dict, edges: dict, conditional_edges: dict) -> None:
+            self._nodes = nodes
+            self._edges = edges
+            self._conditional_edges = conditional_edges
+
+        def invoke(self, state: dict) -> dict:
+            current = self._edges[start_token]
+            current_state = dict(state)
+
+            while current != end_token:
+                update = self._nodes[current](current_state)
+                if update:
+                    current_state.update(update)
+                if current in self._conditional_edges:
+                    router, mapping = self._conditional_edges[current]
+                    current = mapping[router(current_state)]
+                else:
+                    current = self._edges[current]
+            return current_state
+
+    class StateGraph:
+        def __init__(self, state_type) -> None:
+            self._nodes = {}
+            self._edges = {}
+            self._conditional_edges = {}
+
+        def add_node(self, name: str, node) -> None:
+            self._nodes[name] = node
+
+        def add_edge(self, source: str, target: str) -> None:
+            self._edges[source] = target
+
+        def add_conditional_edges(self, source: str, router, mapping: dict) -> None:
+            self._conditional_edges[source] = (router, mapping)
+
+        def compile(self) -> CompiledGraph:
+            return CompiledGraph(self._nodes, self._edges, self._conditional_edges)
+
+    graph_module.END = end_token
+    graph_module.START = start_token
+    graph_module.StateGraph = StateGraph
+    langgraph_module.graph = graph_module
+    sys.modules["langgraph"] = langgraph_module
+    sys.modules["langgraph.graph"] = graph_module
+
+
 try:
     from google.cloud import bigquery as _bigquery  # noqa: F401
 except ImportError:
     _install_google_bigquery_test_shim()
+
+try:
+    from openai import OpenAI as _openai  # noqa: F401
+except ImportError:
+    _install_openai_test_shim()
+
+try:
+    from langgraph.graph import StateGraph as _state_graph  # noqa: F401
+except ImportError:
+    _install_langgraph_test_shim()
 
 
 @pytest.fixture(autouse=True)

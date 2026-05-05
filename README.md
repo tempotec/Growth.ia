@@ -40,5 +40,12 @@ pytest
 O acesso ao BigQuery depende da variavel `GOOGLE_APPLICATION_CREDENTIALS` apontando
 para um arquivo de service account com permissao para consultar datasets publicos.
 
+## Status
+
+- Fase 1 concluida: configuracao centralizada e schemas base.
+- Fase 2 concluida: camada de dados com BigQueryService e AnalyticsRepository.
+- Fase 3 concluida: tools, LLM service, agente LangGraph e testes unitarios da camada agentic.
+
 Neste momento, o repositorio contem a base do backend Glacier AI, incluindo
-configuracao centralizada, schemas iniciais e camada de dados.
+configuracao centralizada, schemas, camada de dados, fluxo agentic e testes
+unitarios para os blocos implementados.
