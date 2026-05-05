@@ -1,6 +1,10 @@
-# Glacier AI Backend
+# Growth.ia
 
-Backend em Python para um agente analítico de e-commerce com FastAPI, LangGraph, OpenAI e BigQuery.
+Aplicacao full-stack de IA para e-commerce com foco em backend analitico, agentes e integracao com dados.
+
+## Glacier AI Backend
+
+Backend em Python para um agente analitico de e-commerce usando FastAPI, LangGraph, OpenAI e BigQuery.
 
 ## Stack
 
@@ -11,15 +15,15 @@ Backend em Python para um agente analítico de e-commerce com FastAPI, LangGraph
 - OpenAI
 - Google BigQuery
 
-## Variáveis de ambiente
+## Variaveis de ambiente
 
-Use o arquivo `.env.example` como referência:
+Use o arquivo `.env.example` como referencia:
 
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
 - `GOOGLE_APPLICATION_CREDENTIALS`
 
-## Instalação
+## Instalacao
 
 ```bash
 pip install -r requirements.txt
@@ -27,8 +31,8 @@ pip install -r requirements.txt
 
 ## Credenciais
 
-O acesso ao BigQuery depende da variável `GOOGLE_APPLICATION_CREDENTIALS` apontando
-para um arquivo de service account com permissão para consultar datasets públicos.
+O acesso ao BigQuery depende da variavel `GOOGLE_APPLICATION_CREDENTIALS` apontando
+para um arquivo de service account com permissao para consultar datasets publicos.
 
-Nesta fase, o projeto contém a base de configuração, os schemas iniciais e a camada
-de dados usada nas próximas etapas.
+Neste momento, o repositorio contem a base do backend Glacier AI, incluindo
+configuracao centralizada, schemas iniciais e camada de dados.
