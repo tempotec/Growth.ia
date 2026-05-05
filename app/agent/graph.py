@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 from langgraph.graph import END, START, StateGraph
 
 from app.agent.nodes import (
@@ -59,3 +61,17 @@ def build_agent_graph(
     graph.add_edge("execute_tool", "generate_answer")
     graph.add_edge("generate_answer", END)
     return graph.compile()
+
+
+@lru_cache
+def get_agent_graph():
+    """Return a cached compiled graph for the default runtime configuration."""
+
+    return build_agent_graph()
+
+
+def run_agent_question(question: str) -> AgentState:
+    """Execute the compiled graph for a single natural-language question."""
+
+    graph = get_agent_graph()
+    return graph.invoke({"question": question})

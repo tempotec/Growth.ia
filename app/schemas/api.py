@@ -14,5 +14,5 @@ class AskResponse(BaseModel):
 
     answer: str
     used_tool: str | None = None
-    data: dict | None = None
+    data: dict | list[dict] | None = None
     error: str | None = None
