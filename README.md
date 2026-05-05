@@ -29,6 +29,12 @@ Use o arquivo `.env.example` como referencia:
 pip install -r requirements.txt
 ```
 
+## Testes
+
+```bash
+pytest
+```
+
 ## Credenciais
 
 O acesso ao BigQuery depende da variavel `GOOGLE_APPLICATION_CREDENTIALS` apontando
