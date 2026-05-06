@@ -39,6 +39,7 @@ def test_local_cache_repository_initializes_database_schema(
     )
 
     assert tables == [
+        {"name": "cache_sync_runs"},
         {"name": "channel_performance_snapshot"},
         {"name": "revenue_by_source_snapshot"},
         {"name": "users_by_source_snapshot"},
@@ -296,3 +297,33 @@ def test_local_cache_repository_raises_for_missing_requested_date_range(
         )
 
     assert "requested date range" in str(exc_info.value)
+
+
+def test_local_cache_repository_records_latest_sync_status(
+    sqlite_service: SQLiteService,
+) -> None:
+    repository = LocalCacheRepository(sqlite_service=sqlite_service)
+    started_at = datetime(2026, 5, 5, 14, 0, 0)
+    completed_at = datetime(2026, 5, 5, 14, 0, 30)
+    snapshot_at = datetime(2026, 5, 5, 14, 0, 10)
+
+    repository.record_sync_run(
+        started_at=started_at,
+        completed_at=completed_at,
+        snapshot_at=snapshot_at,
+        status="success",
+        channel_performance_rows=7,
+        revenue_by_source_rows=5,
+        users_by_source_rows=7,
+    )
+
+    assert repository.get_latest_sync_status() == {
+        "started_at": started_at.isoformat(),
+        "completed_at": completed_at.isoformat(),
+        "snapshot_at": snapshot_at.isoformat(),
+        "status": "success",
+        "channel_performance_rows": 7,
+        "revenue_by_source_rows": 5,
+        "users_by_source_rows": 7,
+        "error_message": None,
+    }

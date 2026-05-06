@@ -37,6 +37,17 @@ CREATE TABLE IF NOT EXISTS users_by_source_snapshot (
     users INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS cache_sync_runs (
+    started_at TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    snapshot_at TEXT,
+    status TEXT NOT NULL,
+    channel_performance_rows INTEGER NOT NULL,
+    revenue_by_source_rows INTEGER NOT NULL,
+    users_by_source_rows INTEGER NOT NULL,
+    error_message TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_channel_performance_snapshot_at
 ON channel_performance_snapshot (snapshot_at);
 
@@ -45,12 +56,16 @@ ON revenue_by_source_snapshot (snapshot_at);
 
 CREATE INDEX IF NOT EXISTS idx_users_by_source_snapshot_at
 ON users_by_source_snapshot (snapshot_at);
+
+CREATE INDEX IF NOT EXISTS idx_cache_sync_runs_started_at
+ON cache_sync_runs (started_at);
 """
 
 REQUIRED_TEXT_COLUMNS = {
     "channel_performance_snapshot": ("start_date", "end_date"),
     "revenue_by_source_snapshot": ("start_date", "end_date"),
     "users_by_source_snapshot": ("start_date", "end_date"),
+    "cache_sync_runs": ("snapshot_at", "error_message"),
 }
 
 

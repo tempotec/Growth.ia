@@ -118,7 +118,28 @@ Para sincronizar snapshots manualmente:
 python scripts/sync_bigquery_cache.py
 ```
 
+Para execucao recorrente no Windows Task Scheduler, use o helper:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\run_sync_bigquery_cache.ps1
+```
+
 O arquivo SQLite padrao sera criado em `data/glacier_cache.db`.
+
+O sync agora registra no SQLite o ultimo status de execucao, incluindo:
+
+- `started_at`
+- `completed_at`
+- `snapshot_at`
+- `status`
+- contagem de linhas materializadas
+- `error_message`, quando houver falha
+
+Isso prepara a base para exibir no futuro indicadores como:
+
+- ultima sincronizacao
+- cache desatualizado
+- dados atualizados ha X minutos
 
 Se `DATA_SOURCE_MODE=local_cache` e ainda nao houver snapshot compativel,
 o backend retornara um erro controlado e claro. Nao existe fallback automatico

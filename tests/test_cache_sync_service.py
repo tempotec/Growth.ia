@@ -57,6 +57,7 @@ def test_cache_sync_service_materializes_all_supported_views() -> None:
     local_cache_repository.write_channel_performance_snapshot.assert_called_once()
     local_cache_repository.write_revenue_by_source_snapshot.assert_called_once()
     local_cache_repository.write_users_by_source_snapshot.assert_called_once()
+    local_cache_repository.record_sync_run.assert_called_once()
     assert result == {
         "snapshot_at": snapshot_at.isoformat(),
         "channel_performance_rows": 1,
@@ -91,3 +92,26 @@ def test_cache_sync_service_queries_users_snapshot_for_every_allowed_source() ->
         call.args[0] for call in analytics_repository.get_users_by_source.call_args_list
     ]
     assert queried_sources == list(ALLOWED_TRAFFIC_SOURCES)
+
+
+def test_cache_sync_service_records_failed_sync_runs() -> None:
+    analytics_repository = Mock()
+    analytics_repository.get_channel_performance_summary.side_effect = RuntimeError("boom")
+    local_cache_repository = Mock()
+    snapshot_at = datetime(2026, 5, 5, 15, 10, 0)
+
+    service = CacheSyncService(
+        analytics_repository=analytics_repository,
+        local_cache_repository=local_cache_repository,
+    )
+
+    try:
+        service.sync_all(snapshot_at=snapshot_at)
+    except RuntimeError as exc:
+        assert str(exc) == "boom"
+    else:
+        raise AssertionError("Expected RuntimeError to be re-raised")
+
+    local_cache_repository.record_sync_run.assert_called_once()
+    assert local_cache_repository.record_sync_run.call_args.kwargs["status"] == "failed"
+    assert local_cache_repository.record_sync_run.call_args.kwargs["error_message"] == "boom"

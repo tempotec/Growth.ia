@@ -124,6 +124,82 @@ class LocalCacheRepository:
             ],
         )
 
+    def record_sync_run(
+        self,
+        *,
+        started_at: datetime,
+        completed_at: datetime,
+        status: str,
+        snapshot_at: datetime | None = None,
+        channel_performance_rows: int = 0,
+        revenue_by_source_rows: int = 0,
+        users_by_source_rows: int = 0,
+        error_message: str | None = None,
+    ) -> None:
+        """Persist one sync execution record."""
+
+        self._sqlite_service.execute_many(
+            """
+            INSERT INTO cache_sync_runs (
+                started_at,
+                completed_at,
+                snapshot_at,
+                status,
+                channel_performance_rows,
+                revenue_by_source_rows,
+                users_by_source_rows,
+                error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    started_at.isoformat(),
+                    completed_at.isoformat(),
+                    snapshot_at.isoformat() if snapshot_at is not None else None,
+                    status,
+                    channel_performance_rows,
+                    revenue_by_source_rows,
+                    users_by_source_rows,
+                    error_message,
+                )
+            ],
+        )
+
+    def get_latest_sync_status(self) -> dict[str, Any]:
+        """Return the most recent sync execution record."""
+
+        rows = self._sqlite_service.fetch_all(
+            """
+            SELECT
+                started_at,
+                completed_at,
+                snapshot_at,
+                status,
+                channel_performance_rows,
+                revenue_by_source_rows,
+                users_by_source_rows,
+                error_message
+            FROM cache_sync_runs
+            ORDER BY started_at DESC
+            LIMIT 1
+            """
+        )
+        if not rows:
+            raise LocalCacheSnapshotNotFoundError(
+                "No cache sync has been recorded yet. Run the cache sync first."
+            )
+        row = rows[0]
+        return {
+            "started_at": row["started_at"],
+            "completed_at": row["completed_at"],
+            "snapshot_at": row["snapshot_at"],
+            "status": row["status"],
+            "channel_performance_rows": int(row["channel_performance_rows"]),
+            "revenue_by_source_rows": int(row["revenue_by_source_rows"]),
+            "users_by_source_rows": int(row["users_by_source_rows"]),
+            "error_message": row["error_message"],
+        }
+
     def get_channel_performance_summary(
         self,
         start_date: date | None = None,
