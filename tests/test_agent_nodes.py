@@ -10,6 +10,7 @@ from app.agent.nodes import (
     parse_question,
     route_to_tool,
 )
+from app.repositories.local_cache_repository import LocalCacheSnapshotNotFoundError
 from app.schemas.analytics import ParsedQuestion
 
 
@@ -98,6 +99,22 @@ def test_execute_tool_returns_controlled_error_on_failure() -> None:
 
     assert result["tool_result"] is None
     assert result["error"] == "source invalida"
+
+
+def test_execute_tool_maps_missing_local_cache_snapshot_to_controlled_error() -> None:
+    tool = Mock(side_effect=LocalCacheSnapshotNotFoundError("Run the cache sync first."))
+
+    result = execute_tool(
+        {
+            "tool_name": "get_channel_performance_summary",
+            "tool_args": {},
+        },
+        tool_registry={"get_channel_performance_summary": tool},
+    )
+
+    assert result["tool_result"] is None
+    assert result["error"] == "local_cache_snapshot_not_found"
+    assert result["answer"] == "Run the cache sync first."
 
 
 def test_generate_answer_node_uses_llm_service() -> None:

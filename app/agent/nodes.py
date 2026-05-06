@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Callable
 
 from app.agent.state import AgentState
+from app.repositories.local_cache_repository import LocalCacheSnapshotNotFoundError
 from app.services.analytics_read_service import AnalyticsReadService
 from app.services.llm_service import LLMService, LLMServiceError
 from app.tools import TOOL_REGISTRY
@@ -91,6 +92,12 @@ def execute_tool(
 
     try:
         tool_result = tool(**tool_args)
+    except LocalCacheSnapshotNotFoundError as exc:
+        return {
+            "tool_result": None,
+            "error": "local_cache_snapshot_not_found",
+            "answer": str(exc),
+        }
     except Exception as exc:
         message = str(exc) or "Nao foi possivel consultar os dados solicitados."
         return {

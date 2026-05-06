@@ -145,6 +145,27 @@ Se `DATA_SOURCE_MODE=local_cache` e ainda nao houver snapshot compativel,
 o backend retornara um erro controlado e claro. Nao existe fallback automatico
 para BigQuery nesta fase.
 
+## Status do cache
+
+O endpoint abaixo expõe o estado operacional do cache local:
+
+```bash
+GET /cache/status
+```
+
+Ele retorna, no minimo:
+
+- `data_source_mode`
+- `last_sync_status`
+- `last_snapshot_at`
+- `cache_age_minutes`
+- `last_sync_started_at`
+- `last_sync_completed_at`
+- `last_sync_error_message`
+
+Isso e util para UI, operacao e debugging, mantendo `/health` apenas como
+healthcheck simples de liveness.
+
 ## Status
 
 - Fase 1 concluida: configuracao centralizada e schemas base.

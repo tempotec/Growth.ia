@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, status
 
 from app.agent.graph import run_agent_question
+from app.core.cache_config import get_cache_settings
 from app.core.logging import get_logger, log_event, short_text
-from app.schemas.api import AskRequest, AskResponse
+from app.repositories.local_cache_repository import (
+    LocalCacheRepository,
+    LocalCacheSnapshotNotFoundError,
+)
+from app.schemas.api import AskRequest, AskResponse, CacheStatusResponse
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -21,6 +27,7 @@ OUT_OF_SCOPE_MESSAGE = (
 )
 GENERIC_INTERNAL_ERROR = "internal_error"
 GENERIC_INTERNAL_MESSAGE = "Nao foi possivel processar a solicitacao no momento."
+LOCAL_CACHE_SNAPSHOT_NOT_FOUND = "local_cache_snapshot_not_found"
 
 
 @router.post("/ask", response_model=AskResponse)
@@ -69,6 +76,40 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@router.get("/cache/status", response_model=CacheStatusResponse)
+def cache_status() -> CacheStatusResponse:
+    """Return operational status for the local cache sync layer."""
+
+    settings = get_cache_settings()
+    repository = LocalCacheRepository()
+
+    try:
+        latest_sync = repository.get_latest_sync_status()
+    except LocalCacheSnapshotNotFoundError:
+        return CacheStatusResponse(
+            status="warning",
+            data_source_mode=settings.data_source_mode,
+            last_sync_status=None,
+            last_snapshot_at=None,
+            cache_age_minutes=None,
+            last_sync_started_at=None,
+            last_sync_completed_at=None,
+            last_sync_error_message="No cache sync has been recorded yet.",
+        )
+
+    last_snapshot_at = _parse_snapshot_datetime(latest_sync.get("snapshot_at"))
+    return CacheStatusResponse(
+        status="ok" if latest_sync["status"] == "success" else "warning",
+        data_source_mode=settings.data_source_mode,
+        last_sync_status=latest_sync["status"],
+        last_snapshot_at=last_snapshot_at,
+        cache_age_minutes=_compute_cache_age_minutes(last_snapshot_at),
+        last_sync_started_at=_parse_snapshot_datetime(latest_sync["started_at"]),
+        last_sync_completed_at=_parse_snapshot_datetime(latest_sync["completed_at"]),
+        last_sync_error_message=latest_sync["error_message"],
+    )
+
+
 def _build_response(state: dict) -> tuple[AskResponse, int]:
     """Translate the final agent state into the public HTTP response contract."""
 
@@ -92,6 +133,8 @@ def _build_response(state: dict) -> tuple[AskResponse, int]:
             data=state.get("tool_result"),
             error=error,
         )
+        if error == LOCAL_CACHE_SNAPSHOT_NOT_FOUND:
+            return response, status.HTTP_503_SERVICE_UNAVAILABLE
         if _is_bad_request_error(error):
             return response, status.HTTP_400_BAD_REQUEST
         return response, status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -112,3 +155,22 @@ def _is_bad_request_error(error: str) -> bool:
 
     lowered = error.lower()
     return "unsupported traffic_source" in lowered or "start_date must" in lowered
+
+
+def _parse_snapshot_datetime(value: str | None) -> datetime | None:
+    """Parse a stored sync timestamp into a datetime."""
+
+    if value is None:
+        return None
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def _compute_cache_age_minutes(snapshot_at: datetime | None) -> int | None:
+    """Compute the age in minutes of the latest snapshot."""
+
+    if snapshot_at is None:
+        return None
+    return max(0, int((datetime.now(UTC) - snapshot_at).total_seconds() // 60))
