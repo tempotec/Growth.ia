@@ -8,6 +8,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from app.agent.prompts import (
+    ANSWER_SYSTEM_PROMPT,
+    PARSE_SYSTEM_PROMPT,
+    build_answer_user_prompt,
+)
 from app.services.llm_service import LLMService, LLMServiceError
 
 
@@ -76,6 +81,28 @@ def test_generate_answer_returns_trimmed_content() -> None:
     )
 
     assert answer == "Resposta final."
+
+
+def test_answer_prompt_enforces_pt_br_and_business_guidance() -> None:
+    payload = json.loads(
+        build_answer_user_prompt(
+            question="Como foi o volume de Search?",
+            intent="traffic_volume_by_source",
+            tool_result={"traffic_source": "Search", "users": 2460},
+            out_of_scope_reason=None,
+        )
+    )
+
+    assert "português do Brasil" in ANSWER_SYSTEM_PROMPT
+    assert "Nunca responda em inglês" in ANSWER_SYSTEM_PROMPT
+    assert "Entregue insight de negócio" in ANSWER_SYSTEM_PROMPT
+    assert payload["response_guidance"]["language"] == "pt-BR"
+    assert "não inventar dados que a tool não retornou" in payload["response_guidance"]["business_rules"]
+
+
+def test_parse_prompt_uses_supported_out_of_scope_contract() -> None:
+    assert "out_of_scope_reason=unsupported_intent" in PARSE_SYSTEM_PROMPT
+    assert "últimos 30 dias" in PARSE_SYSTEM_PROMPT
 
 
 def test_generate_answer_raises_controlled_error_when_completion_fails() -> None:

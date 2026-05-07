@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import re
+import unicodedata
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, status
@@ -14,20 +16,47 @@ from app.repositories.local_cache_repository import (
     LocalCacheRepository,
     LocalCacheSnapshotNotFoundError,
 )
-from app.schemas.api import AskRequest, AskResponse, CacheStatusResponse
+from app.schemas.api import (
+    AskRequest,
+    AskResponse,
+    CacheStatusResponse,
+    DashboardOverviewResponse,
+)
+from app.services.dashboard_overview_service import DashboardOverviewService
 
 router = APIRouter()
 logger = get_logger(__name__)
 
 OUT_OF_SCOPE_ERROR = "unsupported_intent"
 OUT_OF_SCOPE_MESSAGE = (
-    "Essa pergunta esta fora do escopo atual da V1. No momento, consigo responder "
-    "apenas perguntas sobre volume de trafego por origem, receita por canal e "
-    "melhor performance por canal."
+    "Essa pergunta está fora do escopo atual da V1. Posso te ajudar a analisar "
+    "volume de usuários por origem, receita por canal e performance por canal. "
+    "Quando faltar contexto, posso sugerir a próxima análise possível sem "
+    "inventar dados."
 )
+GREETING_MESSAGE = (
+    "Olá! Posso te ajudar a analisar tráfego, receita e performance por canal. "
+    "Você pode perguntar, por exemplo: "
+    "'Como foi o volume de usuários vindos de Search no último mês?' ou "
+    "'Qual canal teve melhor performance e por quê?'"
+)
+SIMPLE_GREETINGS = {"oi", "ola", "bom dia", "boa tarde", "boa noite"}
 GENERIC_INTERNAL_ERROR = "internal_error"
 GENERIC_INTERNAL_MESSAGE = "Nao foi possivel processar a solicitacao no momento."
 LOCAL_CACHE_SNAPSHOT_NOT_FOUND = "local_cache_snapshot_not_found"
+LOCAL_CACHE_SNAPSHOT_NOT_FOUND_MESSAGE = (
+    "Ainda não há um snapshot local disponível para consultar os dados. "
+    "Rode a sincronização do cache antes de fazer essa análise."
+)
+UNSUPPORTED_TRAFFIC_SOURCE_MESSAGE = (
+    "Essa origem de tráfego não está disponível no escopo atual. "
+    "Use uma das origens suportadas: Search, Organic, Facebook, Email, Direct, "
+    "Display ou Referral."
+)
+INVALID_DATE_RANGE_MESSAGE = (
+    "A janela de datas informada é inválida. A data inicial precisa ser menor "
+    "ou igual à data final."
+)
 
 
 @router.post("/ask", response_model=AskResponse)
@@ -40,6 +69,15 @@ def ask(payload: AskRequest) -> AskResponse:
         "ask_request_received",
         question_preview=short_text(payload.question),
     )
+    if _is_simple_greeting(payload.question):
+        log_event(logger, logging.INFO, "ask_greeting_handled")
+        return AskResponse(
+            answer=GREETING_MESSAGE,
+            used_tool=None,
+            data=None,
+            error=None,
+        )
+
     try:
         final_state = run_agent_question(payload.question)
     except Exception as exc:
@@ -110,6 +148,15 @@ def cache_status() -> CacheStatusResponse:
     )
 
 
+@router.get("/api/dashboard/overview", response_model=DashboardOverviewResponse)
+def dashboard_overview(
+    period: str = "30d",
+    channel: str = "all",
+) -> DashboardOverviewResponse:
+    """Return the dashboard overview contract for the frontend shell."""
+    return DashboardOverviewService().build_overview(period=period, channel=channel)
+
+
 def _build_response(state: dict) -> tuple[AskResponse, int]:
     """Translate the final agent state into the public HTTP response contract."""
 
@@ -119,7 +166,7 @@ def _build_response(state: dict) -> tuple[AskResponse, int]:
 
     if intent == "out_of_scope" and out_of_scope_reason == OUT_OF_SCOPE_ERROR:
         response = AskResponse(
-            answer=state.get("answer") or OUT_OF_SCOPE_MESSAGE,
+            answer=OUT_OF_SCOPE_MESSAGE,
             used_tool=None,
             data=None,
             error=OUT_OF_SCOPE_ERROR,
@@ -127,11 +174,23 @@ def _build_response(state: dict) -> tuple[AskResponse, int]:
         return response, status.HTTP_200_OK
 
     if error:
+        answer = state.get("answer") or error
+        response_error = error
+        if error == LOCAL_CACHE_SNAPSHOT_NOT_FOUND:
+            answer = LOCAL_CACHE_SNAPSHOT_NOT_FOUND_MESSAGE
+            response_error = LOCAL_CACHE_SNAPSHOT_NOT_FOUND
+        elif _is_unsupported_traffic_source_error(error):
+            answer = UNSUPPORTED_TRAFFIC_SOURCE_MESSAGE
+            response_error = UNSUPPORTED_TRAFFIC_SOURCE_MESSAGE
+        elif _is_invalid_date_range_error(error):
+            answer = INVALID_DATE_RANGE_MESSAGE
+            response_error = INVALID_DATE_RANGE_MESSAGE
+
         response = AskResponse(
-            answer=state.get("answer") or error,
+            answer=answer,
             used_tool=state.get("tool_name"),
             data=state.get("tool_result"),
-            error=error,
+            error=response_error,
         )
         if error == LOCAL_CACHE_SNAPSHOT_NOT_FOUND:
             return response, status.HTTP_503_SERVICE_UNAVAILABLE
@@ -153,8 +212,38 @@ def _build_response(state: dict) -> tuple[AskResponse, int]:
 def _is_bad_request_error(error: str) -> bool:
     """Identify controlled client-facing validation errors."""
 
-    lowered = error.lower()
-    return "unsupported traffic_source" in lowered or "start_date must" in lowered
+    return _is_unsupported_traffic_source_error(error) or _is_invalid_date_range_error(
+        error
+    )
+
+
+def _is_unsupported_traffic_source_error(error: str) -> bool:
+    """Identify unsupported traffic source errors from repositories."""
+
+    return "unsupported traffic_source" in error.lower()
+
+
+def _is_invalid_date_range_error(error: str) -> bool:
+    """Identify invalid date range errors from validation layers."""
+
+    return "start_date must" in error.lower()
+
+
+def _is_simple_greeting(question: str) -> bool:
+    """Detect greetings that should not invoke the agent or tools."""
+
+    return _normalize_question_text(question) in SIMPLE_GREETINGS
+
+
+def _normalize_question_text(value: str) -> str:
+    """Normalize punctuation, accents and whitespace for simple intent guards."""
+
+    normalized = unicodedata.normalize("NFKD", value.strip().lower())
+    without_accents = "".join(
+        character for character in normalized if not unicodedata.combining(character)
+    )
+    without_punctuation = re.sub(r"[^\w\s]", "", without_accents)
+    return " ".join(without_punctuation.split())
 
 
 def _parse_snapshot_datetime(value: str | None) -> datetime | None:

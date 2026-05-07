@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import date, datetime
 from typing import Any, get_args
 
@@ -168,7 +169,7 @@ class LocalCacheRepository:
     def get_latest_sync_status(self) -> dict[str, Any]:
         """Return the most recent sync execution record."""
 
-        rows = self._sqlite_service.fetch_all(
+        rows = self._fetch_all_or_raise_snapshot_not_found(
             """
             SELECT
                 started_at,
@@ -382,12 +383,28 @@ class LocalCacheRepository:
     def _fetch_latest_rows(self, statement: str) -> list[dict[str, Any]]:
         """Read the most recent snapshot rows for a materialized view."""
 
-        rows = self._sqlite_service.fetch_all(statement)
+        rows = self._fetch_all_or_raise_snapshot_not_found(statement)
         if not rows:
             raise LocalCacheSnapshotNotFoundError(
                 "No local cache snapshot is available yet. Run the cache sync first."
             )
         return rows
+
+    def _fetch_all_or_raise_snapshot_not_found(
+        self,
+        statement: str,
+        parameters: tuple[Any, ...] = (),
+    ) -> list[dict[str, Any]]:
+        """Treat missing cache tables as an empty local-cache state."""
+
+        try:
+            return self._sqlite_service.fetch_all(statement, parameters)
+        except sqlite3.OperationalError as exc:
+            if "no such table" not in str(exc).lower():
+                raise
+            raise LocalCacheSnapshotNotFoundError(
+                "The local cache schema is not initialized yet."
+            ) from exc
 
     def _ensure_matching_date_range(
         self,

@@ -208,6 +208,46 @@ class AnalyticsRepository:
             for row in rows
         ]
 
+    def get_daily_users_by_source(
+        self,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[dict]:
+        """Return daily traffic grouped by source for the selected period."""
+
+        resolved_start_date, resolved_end_date = self._resolve_date_range(
+            start_date, end_date
+        )
+        query = f"""
+            SELECT
+              DATE(created_at) AS metric_date,
+              traffic_source,
+              COUNT(DISTINCT id) AS visits
+            FROM `{USERS_TABLE}`
+            WHERE traffic_source IN UNNEST(@traffic_sources)
+              AND DATE(created_at) BETWEEN @start_date AND @end_date
+            GROUP BY metric_date, traffic_source
+            ORDER BY metric_date ASC, traffic_source ASC
+        """
+        parameters = [
+            bigquery.ArrayQueryParameter(
+                "traffic_sources", "STRING", list(ALLOWED_TRAFFIC_SOURCES)
+            ),
+            bigquery.ScalarQueryParameter("start_date", "DATE", resolved_start_date),
+            bigquery.ScalarQueryParameter("end_date", "DATE", resolved_end_date),
+        ]
+        rows = self._bigquery_service.run_query(query, parameters)
+        return [
+            {
+                "date": row["metric_date"].isoformat()
+                if hasattr(row["metric_date"], "isoformat")
+                else str(row["metric_date"]),
+                "channel": row["traffic_source"],
+                "visits": int(row["visits"] or 0),
+            }
+            for row in rows
+        ]
+
     def _normalize_traffic_source(self, traffic_source: str) -> str:
         """Normalize and validate supported traffic source values."""
 

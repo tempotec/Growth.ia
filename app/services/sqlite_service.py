@@ -94,10 +94,14 @@ class SQLiteService:
 
         if self._connection is None and isinstance(self._database_path, Path):
             self._database_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connection_context() as connection:
-            connection.executescript(SCHEMA_STATEMENTS)
-            self._ensure_required_columns(connection)
-            connection.commit()
+        try:
+            with self._connection_context() as connection:
+                connection.executescript(SCHEMA_STATEMENTS)
+                self._ensure_required_columns(connection)
+                connection.commit()
+        except sqlite3.OperationalError as exc:
+            if "readonly" not in str(exc).lower():
+                raise
 
     def execute_many(self, statement: str, rows: list[tuple[Any, ...]]) -> None:
         """Execute a parameterized statement against many rows."""

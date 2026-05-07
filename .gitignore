@@ -1,7 +1,11 @@
 __pycache__/
 *.py[cod]
+*.err
+*.log
 .env
 .test_runtime/
 secrets/
+case_psel.pdf
 frontend/node_modules/
 frontend/.next/
+frontend/tsconfig.tsbuildinfo

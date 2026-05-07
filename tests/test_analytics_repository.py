@@ -204,3 +204,42 @@ def test_repository_rejects_inverted_date_range(
         )
 
     assert "start_date must be less than or equal to end_date" in str(exc_info.value)
+
+
+def test_get_daily_users_by_source_returns_flat_daily_rows(
+    analytics_repository: AnalyticsRepository,
+    mock_bigquery_service: Mock,
+) -> None:
+    mock_bigquery_service.run_query.return_value = [
+        {"metric_date": date(2026, 4, 1), "traffic_source": "Organic", "visits": 842},
+        {"metric_date": date(2026, 4, 1), "traffic_source": "Direct", "visits": 420},
+    ]
+
+    result = analytics_repository.get_daily_users_by_source(
+        start_date=date(2026, 4, 1),
+        end_date=date(2026, 4, 30),
+    )
+
+    assert result == [
+        {"date": "2026-04-01", "channel": "Organic", "visits": 842},
+        {"date": "2026-04-01", "channel": "Direct", "visits": 420},
+    ]
+
+
+def test_get_daily_users_by_source_query_groups_by_day_and_source(
+    analytics_repository: AnalyticsRepository,
+    mock_bigquery_service: Mock,
+) -> None:
+    mock_bigquery_service.run_query.return_value = []
+
+    analytics_repository.get_daily_users_by_source(
+        start_date=date(2026, 4, 1),
+        end_date=date(2026, 4, 30),
+    )
+
+    query, parameters = mock_bigquery_service.run_query.call_args.args
+
+    assert "DATE(created_at) AS metric_date" in query
+    assert "GROUP BY metric_date, traffic_source" in query
+    assert "ORDER BY metric_date ASC, traffic_source ASC" in query
+    assert parameters[0].values == list(ALLOWED_TRAFFIC_SOURCES)

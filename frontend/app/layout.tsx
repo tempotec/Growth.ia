@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Growth.ia | Glacier AI",
-  description: "Copiloto analitico para validar a experiencia do chat com o backend Glacier AI.",
+  description: "Base limpa do frontend para reconstruir o dashboard e o copilot do Glacier AI.",
 };
 
 export default function RootLayout({

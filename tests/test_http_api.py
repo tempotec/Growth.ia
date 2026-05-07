@@ -39,7 +39,7 @@ def test_post_ask_returns_out_of_scope_response(monkeypatch) -> None:
             "intent": "out_of_scope",
             "tool_name": None,
             "tool_result": None,
-            "answer": "Essa pergunta esta fora do escopo atual da V1.",
+            "answer": "The current V1 scope covers analysis only.",
             "error": None,
             "out_of_scope_reason": "unsupported_intent",
         },
@@ -51,6 +51,27 @@ def test_post_ask_returns_out_of_scope_response(monkeypatch) -> None:
     assert response.json()["used_tool"] is None
     assert response.json()["data"] is None
     assert response.json()["error"] == "unsupported_intent"
+    assert response.json()["answer"].startswith("Essa pergunta está fora do escopo")
+    assert "The current" not in response.json()["answer"]
+
+
+def test_post_ask_handles_simple_greeting_without_agent(monkeypatch) -> None:
+    app = create_app()
+    client = TestClient(app)
+
+    def fail_if_called(question: str) -> dict:
+        raise AssertionError("Agent should not be called for simple greetings.")
+
+    monkeypatch.setattr("app.api.routes.run_agent_question", fail_if_called)
+
+    response = client.post("/ask", json={"question": "oi"})
+
+    assert response.status_code == 200
+    assert response.json()["answer"].startswith("Olá!")
+    assert "tráfego, receita e performance por canal" in response.json()["answer"]
+    assert response.json()["used_tool"] is None
+    assert response.json()["data"] is None
+    assert response.json()["error"] is None
 
 
 def test_post_ask_rejects_invalid_payload() -> None:
@@ -80,7 +101,8 @@ def test_post_ask_returns_bad_request_for_controlled_agent_error(monkeypatch) ->
     response = client.post("/ask", json={"question": "Volume de TikTok"})
 
     assert response.status_code == 400
-    assert response.json()["error"].startswith("Unsupported traffic_source")
+    assert response.json()["answer"].startswith("Essa origem de tráfego")
+    assert response.json()["error"].startswith("Essa origem de tráfego")
 
 
 def test_post_ask_returns_internal_error_for_unexpected_failure(monkeypatch) -> None:
@@ -118,6 +140,7 @@ def test_post_ask_returns_service_unavailable_for_missing_local_cache_snapshot(
     response = client.post("/ask", json={"question": "Qual canal teve melhor performance?"})
 
     assert response.status_code == 503
+    assert response.json()["answer"].startswith("Ainda não há um snapshot local")
     assert response.json()["error"] == "local_cache_snapshot_not_found"
 
 
@@ -211,3 +234,131 @@ def test_get_cache_status_returns_warning_when_no_sync_is_recorded(monkeypatch) 
     assert payload["status"] == "warning"
     assert payload["last_sync_status"] is None
     assert payload["last_sync_error_message"] == "No cache sync has been recorded yet."
+
+
+def test_get_dashboard_overview_returns_empty_contract_when_no_snapshot_exists(
+    monkeypatch,
+) -> None:
+    app = create_app()
+    client = TestClient(app)
+
+    class StubDashboardOverviewService:
+        def build_overview(self, *, period: str, channel: str):
+            from app.schemas.api import DashboardInsight, DashboardOverviewResponse
+
+            return DashboardOverviewResponse(
+                status="online",
+                period=period,
+                channel=channel,
+                lastSnapshotAt=None,
+                summary=None,
+                trafficBySource=[],
+                conversionByChannel=[],
+                insights=[
+                    DashboardInsight(
+                        type="info",
+                        title="Aguardando primeira sincronizacao",
+                        message="Nenhum snapshot disponivel.",
+                    )
+                ],
+            )
+
+    monkeypatch.setattr(
+        "app.api.routes.DashboardOverviewService",
+        StubDashboardOverviewService,
+    )
+
+    response = client.get("/api/dashboard/overview?period=30d&channel=all")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "online"
+    assert payload["period"] == "30d"
+    assert payload["channel"] == "all"
+    assert payload["summary"] is None
+    assert payload["trafficBySource"] == []
+    assert payload["conversionByChannel"] == []
+    assert payload["insights"][0]["title"] == "Aguardando primeira sincronizacao"
+
+
+def test_get_dashboard_overview_returns_summary_from_latest_snapshot(monkeypatch) -> None:
+    app = create_app()
+    client = TestClient(app)
+
+    class StubDashboardOverviewService:
+        def build_overview(self, *, period: str, channel: str):
+            from app.schemas.api import (
+                DashboardConversionPoint,
+                DashboardInsight,
+                DashboardOverviewResponse,
+                DashboardOverviewSummary,
+                DashboardTrafficChannelMetric,
+                DashboardTrafficPoint,
+            )
+
+            return DashboardOverviewResponse(
+                status="online",
+                period=period,
+                channel=channel,
+                lastSnapshotAt="2026-05-05T23:44:13+00:00",
+                summary=DashboardOverviewSummary(
+                    totalUsers=3100,
+                    totalOrders=112,
+                    revenue=88400.0,
+                    conversionRate=3.61,
+                    topChannel="Organic Search",
+                ),
+                trafficBySource=[
+                    DashboardTrafficPoint(
+                        date="2026-04-01",
+                        channels=[
+                            DashboardTrafficChannelMetric(
+                                channel="Organic Search",
+                                visits=842,
+                            ),
+                            DashboardTrafficChannelMetric(
+                                channel="Direct",
+                                visits=420,
+                            ),
+                        ],
+                    )
+                ],
+                conversionByChannel=[
+                    DashboardConversionPoint(
+                        channel="Organic Search",
+                        conversionRate=4.8,
+                    )
+                ],
+                insights=[
+                    DashboardInsight(
+                        type="success",
+                        title="Melhor performance em Organic Search",
+                        message="Organic Search lidera a conversao.",
+                    )
+                ],
+            )
+
+    monkeypatch.setattr(
+        "app.api.routes.DashboardOverviewService",
+        StubDashboardOverviewService,
+    )
+
+    response = client.get("/api/dashboard/overview?period=30d&channel=all")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"]["totalUsers"] == 3100
+    assert payload["summary"]["totalOrders"] == 112
+    assert payload["summary"]["revenue"] == 88400.0
+    assert payload["summary"]["conversionRate"] == 3.61
+    assert payload["summary"]["topChannel"] == "Organic Search"
+    assert payload["trafficBySource"][0]["date"] == "2026-04-01"
+    assert payload["trafficBySource"][0]["channels"] == [
+        {"channel": "Organic Search", "visits": 842},
+        {"channel": "Direct", "visits": 420},
+    ]
+    assert payload["conversionByChannel"][0] == {
+        "channel": "Organic Search",
+        "conversionRate": 4.8,
+    }
+    assert payload["insights"][0]["title"] == "Melhor performance em Organic Search"
