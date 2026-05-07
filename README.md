@@ -326,15 +326,6 @@ Growth/
 └── requirements.txt        # Dependências Python
 ```
 
-## 🚀 Próximos Passos (Roadmap)
-
-- [ ] Dashboard com histórico de perguntas
-- [ ] Autenticação de usuários
-- [ ] Agendamento automático de sync do cache
-- [ ] Mais tools: análise de cohort, churn, LTV
-- [ ] API keys para acesso de terceiros
-- [ ] Logs centralizados (Splunk, CloudLogging)
-- [ ] Cache distribuído com Redis
 
 ## 📝 Licença
 
