@@ -269,6 +269,7 @@ def _normalize_conversation_history(
             "traffic_source",
             "mentioned_traffic_sources",
             "date_range",
+            "analytics_context",
         ):
             value = raw_message.get(key)
             if value is not None:

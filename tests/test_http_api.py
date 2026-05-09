@@ -16,7 +16,39 @@ def test_post_ask_returns_successful_response(monkeypatch) -> None:
         lambda question, conversation_history=None: {
             "intent": "best_channel_performance",
             "tool_name": "get_channel_performance_summary",
-            "tool_result": [{"traffic_source": "Organic", "conversion_rate": 0.08}],
+            "mentioned_traffic_sources": ["Search", "Organic", "Display"],
+            "date_range": {
+                "start_date": "2026-04-10",
+                "end_date": "2026-05-09",
+            },
+            "tool_result": [
+                {
+                    "traffic_source": "Search",
+                    "users": 2493,
+                    "converted_users": 1984,
+                    "orders": 3094,
+                    "revenue": 622593.8,
+                    "conversion_rate": 0.7958,
+                    "start_date": "2026-04-10",
+                    "end_date": "2026-05-09",
+                },
+                {
+                    "traffic_source": "Organic",
+                    "users": 534,
+                    "converted_users": 420,
+                    "orders": 650,
+                    "revenue": 135000,
+                    "conversion_rate": 0.787,
+                },
+                {
+                    "traffic_source": "Display",
+                    "users": 141,
+                    "converted_users": 115,
+                    "orders": 160,
+                    "revenue": 36000,
+                    "conversion_rate": 0.816,
+                },
+            ],
             "answer": "Organic foi o canal com melhor performance nos ultimos 30 dias.",
             "error": None,
         },
@@ -27,6 +59,20 @@ def test_post_ask_returns_successful_response(monkeypatch) -> None:
     assert response.status_code == 200
     assert response.json()["used_tool"] == "get_channel_performance_summary"
     assert response.json()["error"] is None
+    analytics_context = response.json()["analytics_context"]
+    assert analytics_context["last_compared_channels"] == [
+        "Search",
+        "Organic",
+        "Display",
+    ]
+    assert analytics_context["last_metric_context"] == "channel_performance_summary"
+    assert analytics_context["last_tool_result"]["Search"] == {
+        "users": 2493,
+        "converted_users": 1984,
+        "orders": 3094,
+        "revenue": 622593.8,
+        "conversion_rate": 0.7958,
+    }
 
 
 def test_post_ask_forwards_conversation_history(monkeypatch) -> None:
@@ -65,6 +111,21 @@ def test_post_ask_forwards_conversation_history(monkeypatch) -> None:
                         "start_date": "2026-04-08",
                         "end_date": "2026-05-07",
                     },
+                    "analytics_context": {
+                        "last_intent": "traffic_volume_by_source",
+                        "last_channel": "Search",
+                        "last_compared_channels": [],
+                        "last_metric_context": "users_by_source",
+                        "last_period": {
+                            "start_date": "2026-04-08",
+                            "end_date": "2026-05-07",
+                        },
+                        "last_tool_result": {
+                            "Search": {
+                                "users": 2478,
+                            }
+                        },
+                    },
                 }
             ],
         },
@@ -72,6 +133,13 @@ def test_post_ask_forwards_conversation_history(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert captured_history[0]["traffic_source"] == "Search"
+    assert captured_history[0]["analytics_context"]["last_channel"] == "Search"
+    assert (
+        captured_history[0]["analytics_context"]["last_tool_result"]["Search"][
+            "users"
+        ]
+        == 2478
+    )
     assert response.json()["intent"] == "traffic_volume_by_source"
     assert response.json()["date_range"]["start_date"] == "2026-02-01"
 

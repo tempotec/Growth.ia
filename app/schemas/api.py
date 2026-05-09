@@ -8,6 +8,27 @@ from pydantic import BaseModel, Field
 from app.schemas.analytics import AllowedTrafficSource, DateRange, SupportedIntent
 
 
+class AnalyticsContextMetric(BaseModel):
+    """Compact metric row kept for structured analytics follow-ups."""
+
+    users: int | None = None
+    converted_users: int | None = None
+    orders: int | None = None
+    revenue: float | None = None
+    conversion_rate: float | None = None
+
+
+class AnalyticsContext(BaseModel):
+    """Structured context generated from the last analytics tool result."""
+
+    last_intent: SupportedIntent | None = None
+    last_channel: AllowedTrafficSource | None = None
+    last_compared_channels: list[AllowedTrafficSource] = Field(default_factory=list)
+    last_metric_context: str | None = None
+    last_period: DateRange | None = None
+    last_tool_result: dict[str, AnalyticsContextMetric] = Field(default_factory=dict)
+
+
 class ConversationMessage(BaseModel):
     """One recent chat message used to resolve follow-up questions."""
 
@@ -17,6 +38,7 @@ class ConversationMessage(BaseModel):
     traffic_source: AllowedTrafficSource | None = None
     mentioned_traffic_sources: list[AllowedTrafficSource] = Field(default_factory=list)
     date_range: DateRange | None = None
+    analytics_context: AnalyticsContext | None = None
 
 
 class AskRequest(BaseModel):
@@ -40,6 +62,7 @@ class AskResponse(BaseModel):
     traffic_source: AllowedTrafficSource | None = None
     mentioned_traffic_sources: list[AllowedTrafficSource] = Field(default_factory=list)
     date_range: DateRange | None = None
+    analytics_context: AnalyticsContext | None = None
 
 
 class CacheStatusResponse(BaseModel):

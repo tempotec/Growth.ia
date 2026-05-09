@@ -6,6 +6,7 @@ import logging
 import re
 import unicodedata
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, status
 
@@ -58,6 +59,21 @@ INVALID_DATE_RANGE_MESSAGE = (
     "A janela de datas informada é inválida. A data inicial precisa ser menor "
     "ou igual à data final."
 )
+
+
+ANALYTICS_CONTEXT_METRICS = (
+    "users",
+    "converted_users",
+    "orders",
+    "revenue",
+    "conversion_rate",
+)
+ANALYTICS_METRIC_CONTEXT_BY_TOOL = {
+    "get_channel_performance_summary": "channel_performance_summary",
+    "get_channel_performance_by_source": "channel_performance_by_source",
+    "get_revenue_by_source": "revenue_by_source",
+    "get_users_by_source": "users_by_source",
+}
 
 
 @router.post("/ask", response_model=AskResponse)
@@ -235,7 +251,87 @@ def _response_metadata(state: dict) -> dict:
         "traffic_source": state.get("traffic_source"),
         "mentioned_traffic_sources": state.get("mentioned_traffic_sources", []),
         "date_range": state.get("date_range"),
+        "analytics_context": _build_analytics_context(state),
     }
+
+
+def _build_analytics_context(state: dict) -> dict | None:
+    """Build compact structured context from the last tool result."""
+
+    compact_result = _compact_tool_result(
+        state.get("tool_result"),
+        fallback_source=state.get("traffic_source"),
+    )
+    if not compact_result:
+        return None
+
+    mentioned_sources = state.get("mentioned_traffic_sources") or []
+    if len(mentioned_sources) > 1:
+        compact_result = {
+            source: compact_result[source]
+            for source in mentioned_sources
+            if source in compact_result
+        }
+        if not compact_result:
+            return None
+
+    last_channel = state.get("traffic_source")
+    if last_channel is None and len(compact_result) == 1 and len(mentioned_sources) <= 1:
+        last_channel = next(iter(compact_result))
+
+    return {
+        "last_intent": state.get("intent"),
+        "last_channel": last_channel,
+        "last_compared_channels": mentioned_sources if len(mentioned_sources) > 1 else [],
+        "last_metric_context": ANALYTICS_METRIC_CONTEXT_BY_TOOL.get(
+            state.get("tool_name"),
+            state.get("tool_name"),
+        ),
+        "last_period": state.get("date_range"),
+        "last_tool_result": compact_result,
+    }
+
+
+def _compact_tool_result(
+    tool_result: Any,
+    *,
+    fallback_source: str | None,
+) -> dict[str, dict[str, int | float]]:
+    """Keep only source-keyed metrics useful for analytics follow-ups."""
+
+    if isinstance(tool_result, list):
+        compact_rows = {}
+        for row in tool_result:
+            if not isinstance(row, dict):
+                continue
+            source = row.get("traffic_source")
+            if not isinstance(source, str):
+                continue
+            compact_metrics = _compact_metric_row(row)
+            if compact_metrics:
+                compact_rows[source] = compact_metrics
+        return compact_rows
+
+    if isinstance(tool_result, dict):
+        source = tool_result.get("traffic_source") or fallback_source
+        if isinstance(source, str):
+            compact_metrics = _compact_metric_row(tool_result)
+            return {source: compact_metrics} if compact_metrics else {}
+
+    return {}
+
+
+def _compact_metric_row(row: dict[str, Any]) -> dict[str, int | float]:
+    """Extract only numeric metrics needed by the next analytics turn."""
+
+    compact_metrics = {}
+    for metric in ANALYTICS_CONTEXT_METRICS:
+        value = row.get(metric)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, int | float):
+            compact_metrics[metric] = value
+    return compact_metrics
 
 
 def _is_bad_request_error(error: str) -> bool:

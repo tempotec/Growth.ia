@@ -30,6 +30,24 @@ const MOCK_RESPONSE: AskResponse = {
     start_date: "2026-04-08",
     end_date: "2026-05-07",
   },
+  analytics_context: {
+    last_intent: "best_channel_performance",
+    last_channel: "Organic",
+    last_compared_channels: [],
+    last_metric_context: "channel_performance_summary",
+    last_period: {
+      start_date: "2026-04-08",
+      end_date: "2026-05-07",
+    },
+    last_tool_result: {
+      Organic: {
+        users: 1000,
+        orders: 80,
+        revenue: 5500,
+        conversion_rate: 0.08,
+      },
+    },
+  },
 };
 
 const MOCK_CACHE_STATUS: CacheStatusResponse = {

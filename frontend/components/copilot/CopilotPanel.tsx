@@ -104,6 +104,7 @@ export function CopilotPanel({
             traffic_source: response.traffic_source,
             mentioned_traffic_sources: response.mentioned_traffic_sources,
             date_range: response.date_range,
+            analytics_context: response.analytics_context,
             status: "done",
           },
         ]);
@@ -301,6 +302,9 @@ function buildConversationHistory(messages: ChatMessage[]): ConversationMessage[
       }
       if (message.date_range) {
         historyMessage.date_range = message.date_range;
+      }
+      if (message.analytics_context) {
+        historyMessage.analytics_context = message.analytics_context;
       }
 
       return historyMessage;

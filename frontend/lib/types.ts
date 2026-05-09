@@ -13,6 +13,23 @@ export type ConversationDateRange = {
   end_date: string;
 };
 
+export type AnalyticsContextMetric = {
+  users?: number | null;
+  converted_users?: number | null;
+  orders?: number | null;
+  revenue?: number | null;
+  conversion_rate?: number | null;
+};
+
+export type AnalyticsContext = {
+  last_intent?: SupportedIntent | null;
+  last_channel?: string | null;
+  last_compared_channels: string[];
+  last_metric_context?: string | null;
+  last_period?: ConversationDateRange | null;
+  last_tool_result: Record<string, AnalyticsContextMetric>;
+};
+
 export type ConversationMessage = {
   role: "user" | "assistant";
   content: string;
@@ -20,6 +37,7 @@ export type ConversationMessage = {
   traffic_source?: string | null;
   mentioned_traffic_sources?: string[];
   date_range?: ConversationDateRange | null;
+  analytics_context?: AnalyticsContext | null;
 };
 
 export type AskRequest = {
@@ -36,6 +54,7 @@ export type AskResponse = {
   traffic_source: string | null;
   mentioned_traffic_sources: string[];
   date_range: ConversationDateRange | null;
+  analytics_context: AnalyticsContext | null;
 };
 
 export type CacheStatusResponse = {
@@ -105,6 +124,7 @@ export type ChatMessage = {
   traffic_source?: string | null;
   mentioned_traffic_sources?: string[];
   date_range?: ConversationDateRange | null;
+  analytics_context?: AnalyticsContext | null;
   status?: "sending" | "done" | "error";
 };
 

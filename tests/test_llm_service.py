@@ -88,6 +88,21 @@ def test_parse_question_includes_conversation_history_in_prompt() -> None:
                 "start_date": "2026-04-08",
                 "end_date": "2026-05-07",
             },
+            "analytics_context": {
+                "last_intent": "traffic_volume_by_source",
+                "last_channel": "Search",
+                "last_compared_channels": [],
+                "last_metric_context": "users_by_source",
+                "last_period": {
+                    "start_date": "2026-04-08",
+                    "end_date": "2026-05-07",
+                },
+                "last_tool_result": {
+                    "Search": {
+                        "users": 2478,
+                    }
+                },
+            },
         }
     ]
 
@@ -97,6 +112,12 @@ def test_parse_question_includes_conversation_history_in_prompt() -> None:
     prompt_payload = json.loads(messages[1]["content"])
     assert prompt_payload["conversation_history"][0]["traffic_source"] == "Search"
     assert prompt_payload["conversation_history"][0]["intent"] == "traffic_volume_by_source"
+    assert (
+        prompt_payload["conversation_history"][0]["analytics_context"][
+            "last_tool_result"
+        ]["Search"]["users"]
+        == 2478
+    )
 
 
 def test_parse_question_prioritizes_channel_performance_for_short_source_followup() -> None:
