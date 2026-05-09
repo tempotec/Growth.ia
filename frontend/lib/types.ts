@@ -1,7 +1,29 @@
 export type BackendStatus = "checking" | "online" | "offline";
 
+export type SupportedIntent =
+  | "traffic_volume_by_source"
+  | "revenue_by_source"
+  | "best_channel_performance"
+  | "channel_performance_by_source"
+  | "recommendation"
+  | "out_of_scope";
+
+export type ConversationDateRange = {
+  start_date: string;
+  end_date: string;
+};
+
+export type ConversationMessage = {
+  role: "user" | "assistant";
+  content: string;
+  intent?: SupportedIntent | null;
+  traffic_source?: string | null;
+  date_range?: ConversationDateRange | null;
+};
+
 export type AskRequest = {
   question: string;
+  conversation_history?: ConversationMessage[];
 };
 
 export type AskResponse = {
@@ -9,6 +31,9 @@ export type AskResponse = {
   used_tool: string | null;
   data: Record<string, unknown> | Array<Record<string, unknown>> | null;
   error: string | null;
+  intent: SupportedIntent | null;
+  traffic_source: string | null;
+  date_range: ConversationDateRange | null;
 };
 
 export type CacheStatusResponse = {
@@ -24,10 +49,22 @@ export type CacheStatusResponse = {
 
 export type DashboardOverviewSummary = {
   totalUsers: number;
+  totalConvertedUsers?: number;
   totalOrders: number;
   revenue: number;
   conversionRate: number;
   topChannel: string;
+};
+
+export type ChannelPerformance = {
+  traffic_source: string;
+  users: number;
+  converted_users: number;
+  orders: number;
+  revenue: number;
+  conversion_rate: number;
+  start_date?: string | null;
+  end_date?: string | null;
 };
 
 export type DashboardTrafficPoint = {
@@ -62,6 +99,9 @@ export type ChatMessage = {
   role: "user" | "assistant" | "system";
   content: string;
   toolUsed?: string | null;
+  intent?: SupportedIntent | null;
+  traffic_source?: string | null;
+  date_range?: ConversationDateRange | null;
   status?: "sending" | "done" | "error";
 };
 

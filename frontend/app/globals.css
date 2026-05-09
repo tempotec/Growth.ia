@@ -3,13 +3,13 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+  scrollbar-color: rgba(107, 124, 137, 0.35) transparent;
 }
 
 html {
@@ -19,20 +19,20 @@ html {
 body {
   @apply antialiased;
   min-height: 100vh;
-  background-color: #0a0e1a;
-  color: #e2e8f0;
+  background-color: #fff7e8;
+  color: #24313a;
   font-family:
     "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue",
     sans-serif;
   background-image:
-    radial-gradient(circle at top left, rgba(14, 165, 233, 0.16), transparent 28%),
-    radial-gradient(circle at top right, rgba(99, 102, 241, 0.12), transparent 24%),
-    linear-gradient(180deg, #08111f 0%, #0b1324 45%, #0f172a 100%);
+    radial-gradient(circle at top left, rgba(184, 217, 121, 0.28), transparent 28%),
+    radial-gradient(circle at top right, rgba(143, 196, 232, 0.24), transparent 24%),
+    linear-gradient(180deg, #fff7e8 0%, #f9edd7 48%, #eaf6ff 100%);
 }
 
 ::selection {
-  background: rgba(125, 211, 252, 0.24);
-  color: #f8fafc;
+  background: rgba(247, 154, 62, 0.24);
+  color: #24313a;
 }
 
 a {
@@ -46,21 +46,17 @@ pre {
 }
 
 .glass-panel {
-  background: linear-gradient(180deg, rgba(17, 24, 39, 0.92) 0%, rgba(15, 23, 42, 0.82) 100%);
-  border: 1px solid rgba(125, 211, 252, 0.12);
-  box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.5),
-    0 24px 80px rgba(2, 6, 23, 0.32);
-  backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid #e8ddc8;
+  box-shadow: 0 20px 40px rgba(36, 49, 58, 0.08);
+  backdrop-filter: blur(18px);
 }
 
 .glass-panel-elevated {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(15, 23, 42, 0.9) 100%);
-  border: 1px solid rgba(125, 211, 252, 0.16);
-  box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.45),
-    0 24px 80px rgba(2, 6, 23, 0.42);
-  backdrop-filter: blur(24px);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #e8ddc8;
+  box-shadow: 0 24px 60px rgba(36, 49, 58, 0.12);
+  backdrop-filter: blur(22px);
 }
 
 .custom-scrollbar::-webkit-scrollbar {
@@ -68,10 +64,10 @@ pre {
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.18);
+  background: rgba(232, 221, 200, 0.28);
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(125, 211, 252, 0.24);
+  background: rgba(107, 124, 137, 0.28);
   border-radius: 9999px;
 }

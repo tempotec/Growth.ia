@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 import logging
 import os
 from time import perf_counter
+from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
@@ -22,6 +24,7 @@ from app.core.logging import (
     log_event,
     set_request_id,
 )
+from app.services.cache_scheduler_service import CacheSchedulerService
 
 
 DEFAULT_CORS_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
@@ -34,11 +37,24 @@ def _get_cors_origins() -> list[str]:
     return [origin.strip() for origin in configured_origins.split(",") if origin.strip()]
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Start and stop background services for the API lifecycle."""
+
+    cache_scheduler = CacheSchedulerService()
+    app.state.cache_scheduler = cache_scheduler
+    await cache_scheduler.start()
+    try:
+        yield
+    finally:
+        await cache_scheduler.stop()
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
 
     configure_logging()
-    app = FastAPI(title="Glacier AI Backend", version="0.1.0")
+    app = FastAPI(title="Glacier AI Backend", version="0.1.0", lifespan=lifespan)
     logger = get_logger(__name__)
 
     app.add_middleware(

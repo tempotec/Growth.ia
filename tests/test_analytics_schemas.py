@@ -76,7 +76,20 @@ def test_channel_performance_accepts_valid_payload(
     performance = ChannelPerformance(**valid_channel_performance_payload)
 
     assert performance.traffic_source == "Organic"
+    assert performance.converted_users == 80
     assert performance.conversion_rate == 0.08
+
+
+def test_channel_performance_rejects_order_user_ratio_as_conversion(
+    valid_channel_performance_payload: dict,
+) -> None:
+    invalid_payload = {
+        **valid_channel_performance_payload,
+        "conversion_rate": 3.2,
+    }
+
+    with pytest.raises(ValidationError):
+        ChannelPerformance(**invalid_payload)
 
 
 def test_users_by_source_result_accepts_valid_payload(

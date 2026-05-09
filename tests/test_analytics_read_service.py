@@ -46,6 +46,7 @@ def test_analytics_read_service_uses_local_cache_mode() -> None:
         {
             "traffic_source": "Organic",
             "users": 1000,
+            "converted_users": 80,
             "orders": 80,
             "revenue": 5500.0,
             "conversion_rate": 0.08,
@@ -68,6 +69,42 @@ def test_analytics_read_service_uses_local_cache_mode() -> None:
         end_date=None,
     )
     bigquery_repository.get_channel_performance_summary.assert_not_called()
+
+
+def test_analytics_read_service_filters_channel_performance_by_source() -> None:
+    bigquery_repository = Mock()
+    bigquery_repository.get_channel_performance_summary.return_value = [
+        {
+            "traffic_source": "Email",
+            "users": 168,
+            "converted_users": 5,
+            "orders": 513,
+            "revenue": 44577.74,
+            "conversion_rate": 0.03,
+            "start_date": "2026-04-08",
+            "end_date": "2026-05-07",
+        },
+        {
+            "traffic_source": "Facebook",
+            "users": 204,
+            "converted_users": 6,
+            "orders": 612,
+            "revenue": 52615.84,
+            "conversion_rate": 0.0294,
+            "start_date": "2026-04-08",
+            "end_date": "2026-05-07",
+        },
+    ]
+
+    service = AnalyticsReadService(
+        bigquery_repository=bigquery_repository,
+        data_source_mode="bigquery_direct",
+    )
+
+    result = service.get_channel_performance_by_source("facebook")
+
+    assert result["traffic_source"] == "Facebook"
+    assert result["revenue"] == 52615.84
 
 
 def test_analytics_read_service_surfaces_missing_local_snapshot_error() -> None:

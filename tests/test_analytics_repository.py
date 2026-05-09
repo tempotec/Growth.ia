@@ -147,6 +147,7 @@ def test_get_channel_performance_summary_returns_structured_rows(
         {
             "traffic_source": "Organic",
             "users": 1000,
+            "converted_users": 80,
             "orders": 80,
             "revenue": 5500.0,
             "conversion_rate": 0.08,
@@ -162,6 +163,7 @@ def test_get_channel_performance_summary_returns_structured_rows(
         {
             "traffic_source": "Organic",
             "users": 1000,
+            "converted_users": 80,
             "orders": 80,
             "revenue": 5500.0,
             "conversion_rate": 0.08,
@@ -185,13 +187,41 @@ def test_get_channel_performance_summary_query_uses_safe_aggregations(
     query, parameters = mock_bigquery_service.run_query.call_args.args
 
     assert f"FROM `{USERS_TABLE}`" in query
-    assert f"FROM `{ORDERS_TABLE}` AS o" in query
+    assert f"LEFT JOIN `{ORDERS_TABLE}` AS o" in query
     assert f"FROM `{ORDER_ITEMS_TABLE}`" in query
+    assert "users_base AS" in query
+    assert "COUNT(DISTINCT CASE" in query
+    assert "converted_users" in query
     assert "COUNT(DISTINCT o.order_id) AS orders" in query
     assert "WITH source_dim AS" in query
     assert "order_revenue AS" in query
     assert "SAFE_DIVIDE" in query
+    assert "AND DATE(o.created_at) BETWEEN @start_date AND @end_date" in query
     assert parameters[0].values == list(ALLOWED_TRAFFIC_SOURCES)
+
+
+def test_get_channel_performance_summary_rejects_invalid_conversion_rate(
+    analytics_repository: AnalyticsRepository,
+    mock_bigquery_service: Mock,
+) -> None:
+    mock_bigquery_service.run_query.return_value = [
+        {
+            "traffic_source": "Organic",
+            "users": 1000,
+            "converted_users": 80,
+            "orders": 3200,
+            "revenue": 5500.0,
+            "conversion_rate": 3.2,
+        }
+    ]
+
+    with pytest.raises(AnalyticsRepositoryError) as exc_info:
+        analytics_repository.get_channel_performance_summary(
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 4, 30),
+        )
+
+    assert "conversion_rate invalid" in str(exc_info.value)
 
 
 def test_repository_rejects_inverted_date_range(

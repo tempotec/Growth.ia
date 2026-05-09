@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS channel_performance_snapshot (
     end_date TEXT NOT NULL,
     traffic_source TEXT NOT NULL,
     users INTEGER NOT NULL,
+    converted_users INTEGER NOT NULL,
     orders INTEGER NOT NULL,
     revenue REAL NOT NULL,
     conversion_rate REAL NOT NULL
@@ -61,11 +62,24 @@ CREATE INDEX IF NOT EXISTS idx_cache_sync_runs_started_at
 ON cache_sync_runs (started_at);
 """
 
-REQUIRED_TEXT_COLUMNS = {
-    "channel_performance_snapshot": ("start_date", "end_date"),
-    "revenue_by_source_snapshot": ("start_date", "end_date"),
-    "users_by_source_snapshot": ("start_date", "end_date"),
-    "cache_sync_runs": ("snapshot_at", "error_message"),
+REQUIRED_COLUMNS = {
+    "channel_performance_snapshot": {
+        "start_date": "TEXT",
+        "end_date": "TEXT",
+        "converted_users": "INTEGER",
+    },
+    "revenue_by_source_snapshot": {
+        "start_date": "TEXT",
+        "end_date": "TEXT",
+    },
+    "users_by_source_snapshot": {
+        "start_date": "TEXT",
+        "end_date": "TEXT",
+    },
+    "cache_sync_runs": {
+        "snapshot_at": "TEXT",
+        "error_message": "TEXT",
+    },
 }
 
 
@@ -138,13 +152,13 @@ class SQLiteService:
     def _ensure_required_columns(self, connection: sqlite3.Connection) -> None:
         """Add newer required columns when opening an older cache database."""
 
-        for table_name, column_names in REQUIRED_TEXT_COLUMNS.items():
+        for table_name, column_definitions in REQUIRED_COLUMNS.items():
             existing_columns = {
                 row["name"]
                 for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
             }
-            for column_name in column_names:
+            for column_name, column_type in column_definitions.items():
                 if column_name not in existing_columns:
                     connection.execute(
-                        f"ALTER TABLE {table_name} ADD COLUMN {column_name} TEXT"
+                        f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
                     )

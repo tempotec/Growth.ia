@@ -5,7 +5,10 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import Mock, patch
 
-from app.tools.performance_tools import get_channel_performance_summary
+from app.tools.performance_tools import (
+    get_channel_performance_by_source,
+    get_channel_performance_summary,
+)
 from app.tools.revenue_tools import get_revenue_by_source
 from app.tools.traffic_tools import get_users_by_source
 
@@ -53,6 +56,28 @@ def test_get_channel_performance_summary_tool_uses_repository() -> None:
 
     assert result[0]["conversion_rate"] == 0.08
     repository.get_channel_performance_summary.assert_called_once()
+
+
+def test_get_channel_performance_by_source_tool_uses_repository() -> None:
+    repository = Mock()
+    repository.get_channel_performance_by_source.return_value = {
+        "traffic_source": "Search",
+        "users": 799,
+        "converted_users": 23,
+        "orders": 2310,
+        "revenue": 198000.5,
+        "conversion_rate": 0.0289,
+    }
+
+    result = get_channel_performance_by_source(
+        traffic_source="Search",
+        start_date=date(2026, 3, 1),
+        end_date=date(2026, 3, 31),
+        repository=repository,
+    )
+
+    assert result["traffic_source"] == "Search"
+    repository.get_channel_performance_by_source.assert_called_once()
 
 
 def test_tools_default_to_analytics_read_service_without_changing_contract() -> None:

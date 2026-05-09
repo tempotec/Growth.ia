@@ -10,6 +10,8 @@ SupportedIntent = Literal[
     "traffic_volume_by_source",
     "revenue_by_source",
     "best_channel_performance",
+    "channel_performance_by_source",
+    "recommendation",
     "out_of_scope",
 ]
 
@@ -78,9 +80,10 @@ class ChannelPerformance(BaseModel):
 
     traffic_source: AllowedTrafficSource
     users: int = Field(ge=0)
+    converted_users: int = Field(ge=0)
     orders: int = Field(ge=0)
     revenue: float = Field(ge=0)
-    conversion_rate: float = Field(ge=0)
+    conversion_rate: float = Field(ge=0, le=1)
 
 
 class ChannelPerformanceSummaryResult(BaseModel):
@@ -89,3 +92,15 @@ class ChannelPerformanceSummaryResult(BaseModel):
     date_range: DateRange
     channels: list[ChannelPerformance]
     ranking_basis: str = "conversion_rate_then_revenue"
+
+
+class ChannelPerformanceBySourceResult(BaseModel):
+    """Structured payload for one channel performance query."""
+
+    traffic_source: AllowedTrafficSource
+    users: int = Field(ge=0)
+    converted_users: int = Field(ge=0)
+    orders: int = Field(ge=0)
+    revenue: float = Field(ge=0)
+    conversion_rate: float = Field(ge=0, le=1)
+    date_range: DateRange

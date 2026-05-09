@@ -13,6 +13,7 @@ class AgentState(TypedDict, total=False):
     """State shared across the LangGraph workflow."""
 
     question: str
+    conversation_history: list[dict[str, Any]]
     parsed_question: ParsedQuestion | None
     intent: SupportedIntent | None
     traffic_source: str | None

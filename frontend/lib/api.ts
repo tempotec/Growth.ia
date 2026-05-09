@@ -1,6 +1,7 @@
 import type {
   AskResponse,
   CacheStatusResponse,
+  ConversationMessage,
   DashboardOverviewResponse,
 } from "@/lib/types";
 
@@ -22,6 +23,12 @@ const MOCK_RESPONSE: AskResponse = {
     },
   ],
   error: null,
+  intent: "best_channel_performance",
+  traffic_source: null,
+  date_range: {
+    start_date: "2026-04-08",
+    end_date: "2026-05-07",
+  },
 };
 
 const MOCK_CACHE_STATUS: CacheStatusResponse = {
@@ -126,7 +133,10 @@ export async function fetchDashboardOverview(
   return (await response.json()) as DashboardOverviewResponse;
 }
 
-export async function askQuestion(question: string): Promise<AskResponse> {
+export async function askQuestion(
+  question: string,
+  conversationHistory: ConversationMessage[] = [],
+): Promise<AskResponse> {
   if (USE_MOCK_API) {
     await new Promise((resolve) => setTimeout(resolve, 600));
     return {
@@ -143,7 +153,10 @@ export async function askQuestion(question: string): Promise<AskResponse> {
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({
+      question,
+      conversation_history: conversationHistory,
+    }),
   });
 
   const payload = (await response.json()) as Partial<AskResponse> & { error?: string };

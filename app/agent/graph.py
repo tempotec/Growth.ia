@@ -70,8 +70,16 @@ def get_agent_graph():
     return build_agent_graph()
 
 
-def run_agent_question(question: str) -> AgentState:
+def run_agent_question(
+    question: str,
+    conversation_history: list[dict] | None = None,
+) -> AgentState:
     """Execute the compiled graph for a single natural-language question."""
 
     graph = get_agent_graph()
-    return graph.invoke({"question": question})
+    return graph.invoke(
+        {
+            "question": question,
+            "conversation_history": conversation_history or [],
+        }
+    )

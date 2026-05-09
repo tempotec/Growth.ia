@@ -30,7 +30,8 @@ logger = get_logger(__name__)
 OUT_OF_SCOPE_ERROR = "unsupported_intent"
 OUT_OF_SCOPE_MESSAGE = (
     "Essa pergunta está fora do escopo atual da V1. Posso te ajudar a analisar "
-    "volume de usuários por origem, receita por canal e performance por canal. "
+    "volume de usuários por origem, receita por canal, dados de um canal e "
+    "performance por canal, além de recomendações baseadas nesses dados. "
     "Quando faltar contexto, posso sugerir a próxima análise possível sem "
     "inventar dados."
 )
@@ -78,8 +79,12 @@ def ask(payload: AskRequest) -> AskResponse:
             error=None,
         )
 
+    conversation_history = _serialize_conversation_history(payload)
     try:
-        final_state = run_agent_question(payload.question)
+        final_state = run_agent_question(
+            payload.question,
+            conversation_history=conversation_history,
+        )
     except Exception as exc:
         log_event(
             logger,
@@ -163,6 +168,7 @@ def _build_response(state: dict) -> tuple[AskResponse, int]:
     intent = state.get("intent")
     out_of_scope_reason = state.get("out_of_scope_reason")
     error = state.get("error")
+    metadata = _response_metadata(state)
 
     if intent == "out_of_scope" and out_of_scope_reason == OUT_OF_SCOPE_ERROR:
         response = AskResponse(
@@ -170,6 +176,7 @@ def _build_response(state: dict) -> tuple[AskResponse, int]:
             used_tool=None,
             data=None,
             error=OUT_OF_SCOPE_ERROR,
+            **metadata,
         )
         return response, status.HTTP_200_OK
 
@@ -191,6 +198,7 @@ def _build_response(state: dict) -> tuple[AskResponse, int]:
             used_tool=state.get("tool_name"),
             data=state.get("tool_result"),
             error=response_error,
+            **metadata,
         )
         if error == LOCAL_CACHE_SNAPSHOT_NOT_FOUND:
             return response, status.HTTP_503_SERVICE_UNAVAILABLE
@@ -204,9 +212,29 @@ def _build_response(state: dict) -> tuple[AskResponse, int]:
             used_tool=state.get("tool_name"),
             data=state.get("tool_result"),
             error=None,
+            **metadata,
         ),
         status.HTTP_200_OK,
     )
+
+
+def _serialize_conversation_history(payload: AskRequest) -> list[dict]:
+    """Convert recent Pydantic chat messages into compact JSON-ready context."""
+
+    return [
+        message.model_dump(mode="json", exclude_none=True)
+        for message in payload.conversation_history[-10:]
+    ]
+
+
+def _response_metadata(state: dict) -> dict:
+    """Expose the last parse so the frontend can enrich future history."""
+
+    return {
+        "intent": state.get("intent"),
+        "traffic_source": state.get("traffic_source"),
+        "date_range": state.get("date_range"),
+    }
 
 
 def _is_bad_request_error(error: str) -> bool:

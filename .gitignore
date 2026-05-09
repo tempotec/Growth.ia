@@ -2,7 +2,12 @@ __pycache__/
 *.py[cod]
 *.err
 *.log
+.pytest_cache/
 .env
+.venv/
+.venv*/
+venv/
+env/
 .test_runtime/
 secrets/
 case_psel.pdf

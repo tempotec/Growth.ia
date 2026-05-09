@@ -18,11 +18,22 @@ def test_parse_question_node_populates_state(valid_parsed_question_payload: dict
     llm_service = Mock()
     llm_service.parse_question.return_value = ParsedQuestion(**valid_parsed_question_payload)
 
-    result = parse_question({"question": "Como foi o volume de Search?"}, llm_service=llm_service)
+    history = [{"role": "assistant", "content": "Search teve 10 usuarios."}]
+    result = parse_question(
+        {
+            "question": "E em fevereiro?",
+            "conversation_history": history,
+        },
+        llm_service=llm_service,
+    )
 
     assert result["intent"] == "traffic_volume_by_source"
     assert result["traffic_source"] == "Search"
     assert result["error"] is None
+    llm_service.parse_question.assert_called_once_with(
+        "E em fevereiro?",
+        conversation_history=history,
+    )
 
 
 def test_parse_question_node_returns_controlled_error_on_failure() -> None:
@@ -58,10 +69,46 @@ def test_route_to_tool_maps_supported_intents(valid_parsed_question_payload: dic
             "date_range": parsed.date_range,
         }
     )
+    channel_result = route_to_tool(
+        {
+            "intent": "channel_performance_by_source",
+            "traffic_source": parsed.traffic_source,
+            "date_range": parsed.date_range,
+        }
+    )
+    recommendation_channel_result = route_to_tool(
+        {
+            "intent": "recommendation",
+            "traffic_source": parsed.traffic_source,
+            "date_range": parsed.date_range,
+        }
+    )
+    recommendation_summary_result = route_to_tool(
+        {
+            "intent": "recommendation",
+            "date_range": parsed.date_range,
+        }
+    )
 
     assert traffic_result["tool_name"] == "get_users_by_source"
     assert revenue_result["tool_name"] == "get_revenue_by_source"
     assert performance_result["tool_name"] == "get_channel_performance_summary"
+    assert channel_result["tool_name"] == "get_channel_performance_by_source"
+    assert channel_result["tool_args"]["traffic_source"] == "Search"
+    assert (
+        recommendation_channel_result["tool_name"]
+        == "get_channel_performance_by_source"
+    )
+    assert recommendation_channel_result["tool_args"]["traffic_source"] == "Search"
+    assert recommendation_summary_result["tool_name"] == "get_channel_performance_summary"
+
+
+def test_route_to_tool_requests_clarification_when_source_specific_intent_lacks_source() -> None:
+    result = route_to_tool({"intent": "channel_performance_by_source"})
+
+    assert result["intent"] == "out_of_scope"
+    assert result["tool_name"] is None
+    assert result["out_of_scope_reason"] == "needs_clarification"
 
 
 def test_route_to_tool_skips_out_of_scope() -> None:
@@ -132,6 +179,13 @@ def test_generate_answer_node_uses_llm_service() -> None:
     )
 
     assert result["answer"] == "Organic teve a melhor performance."
+    llm_service.generate_answer.assert_called_once_with(
+        question="Qual canal teve melhor performance?",
+        intent="best_channel_performance",
+        tool_result=[{"traffic_source": "Organic"}],
+        out_of_scope_reason=None,
+        conversation_history=[],
+    )
 
 
 def test_generate_answer_node_preserves_existing_answer() -> None:

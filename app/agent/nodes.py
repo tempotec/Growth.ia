@@ -21,9 +21,13 @@ def parse_question(
 
     service = llm_service or LLMService()
     question = state["question"]
+    conversation_history = state.get("conversation_history", [])
 
     try:
-        parsed_question = service.parse_question(question)
+        parsed_question = service.parse_question(
+            question,
+            conversation_history=conversation_history,
+        )
     except (LLMServiceError, Exception):
         return {
             "intent": "out_of_scope",
@@ -60,11 +64,42 @@ def route_to_tool(state: AgentState) -> AgentState:
 
     intent = state.get("intent")
     if intent == "traffic_volume_by_source":
+        if not state.get("traffic_source"):
+            return {
+                "intent": "out_of_scope",
+                "out_of_scope_reason": "needs_clarification",
+                "tool_name": None,
+                "tool_args": {},
+            }
         tool_args["traffic_source"] = state.get("traffic_source")
         return {"tool_name": "get_users_by_source", "tool_args": tool_args}
     if intent == "revenue_by_source":
         return {"tool_name": "get_revenue_by_source", "tool_args": tool_args}
     if intent == "best_channel_performance":
+        return {
+            "tool_name": "get_channel_performance_summary",
+            "tool_args": tool_args,
+        }
+    if intent == "channel_performance_by_source":
+        if not state.get("traffic_source"):
+            return {
+                "intent": "out_of_scope",
+                "out_of_scope_reason": "needs_clarification",
+                "tool_name": None,
+                "tool_args": {},
+            }
+        tool_args["traffic_source"] = state.get("traffic_source")
+        return {
+            "tool_name": "get_channel_performance_by_source",
+            "tool_args": tool_args,
+        }
+    if intent == "recommendation":
+        if state.get("traffic_source"):
+            tool_args["traffic_source"] = state.get("traffic_source")
+            return {
+                "tool_name": "get_channel_performance_by_source",
+                "tool_args": tool_args,
+            }
         return {
             "tool_name": "get_channel_performance_summary",
             "tool_args": tool_args,
@@ -125,6 +160,7 @@ def generate_answer(
             intent=state.get("intent"),
             tool_result=state.get("tool_result"),
             out_of_scope_reason=state.get("out_of_scope_reason"),
+            conversation_history=state.get("conversation_history", []),
         )
     except LLMServiceError:
         answer = "Nao foi possivel gerar a resposta final no momento."

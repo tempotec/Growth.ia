@@ -249,6 +249,7 @@ def valid_channel_performance_payload() -> dict:
     return {
         "traffic_source": "Organic",
         "users": 1000,
+        "converted_users": 80,
         "orders": 80,
         "revenue": 5500.0,
         "conversion_rate": 0.08,

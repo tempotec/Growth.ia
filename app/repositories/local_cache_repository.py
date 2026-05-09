@@ -47,10 +47,11 @@ class LocalCacheRepository:
                 end_date,
                 traffic_source,
                 users,
+                converted_users,
                 orders,
                 revenue,
                 conversion_rate
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -59,6 +60,7 @@ class LocalCacheRepository:
                     row["end_date"],
                     row["traffic_source"],
                     int(row["users"]),
+                    int(row["converted_users"]),
                     int(row["orders"]),
                     float(row["revenue"]),
                     float(row["conversion_rate"]),
@@ -216,6 +218,7 @@ class LocalCacheRepository:
                 end_date,
                 traffic_source,
                 users,
+                converted_users,
                 orders,
                 revenue,
                 conversion_rate
@@ -232,9 +235,10 @@ class LocalCacheRepository:
             {
                 "traffic_source": row["traffic_source"],
                 "users": int(row["users"]),
+                "converted_users": _read_converted_users(row),
                 "orders": int(row["orders"]),
                 "revenue": float(row["revenue"]),
-                "conversion_rate": float(row["conversion_rate"]),
+                "conversion_rate": _validate_conversion_rate(row["conversion_rate"]),
                 "start_date": row["start_date"],
                 "end_date": row["end_date"],
             }
@@ -328,6 +332,7 @@ class LocalCacheRepository:
                 end_date,
                 traffic_source,
                 users,
+                converted_users,
                 orders,
                 revenue,
                 conversion_rate
@@ -442,3 +447,27 @@ class LocalCacheRepository:
                 f"Unsupported traffic_source. Allowed values: {allowed_values}."
             )
         return normalized
+
+
+def _read_converted_users(row: dict[str, Any]) -> int:
+    """Read converted users, forcing stale cache snapshots to be refreshed."""
+
+    converted_users = row.get("converted_users")
+    if converted_users is None:
+        raise LocalCacheSnapshotNotFoundError(
+            "No local cache snapshot with converted_users is available. "
+            "Run the cache sync first."
+        )
+    return int(converted_users)
+
+
+def _validate_conversion_rate(value: object) -> float:
+    """Return a decimal conversion rate, rejecting order/user ratios."""
+
+    conversion_rate = float(value or 0)
+    if conversion_rate < 0 or conversion_rate > 1:
+        raise LocalCacheSnapshotNotFoundError(
+            "The latest local cache snapshot contains an invalid conversion_rate. "
+            "Run the cache sync first."
+        )
+    return conversion_rate

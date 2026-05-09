@@ -1,14 +1,31 @@
 """API request and response schemas."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from app.schemas.analytics import AllowedTrafficSource, DateRange, SupportedIntent
+
+
+class ConversationMessage(BaseModel):
+    """One recent chat message used to resolve follow-up questions."""
+
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, description="Message text.")
+    intent: SupportedIntent | None = None
+    traffic_source: AllowedTrafficSource | None = None
+    date_range: DateRange | None = None
 
 
 class AskRequest(BaseModel):
     """Input payload for the /ask endpoint."""
 
     question: str = Field(..., min_length=1, description="User natural language query.")
+    conversation_history: list[ConversationMessage] = Field(
+        default_factory=list,
+        description="Recent user/assistant messages for conversational context.",
+    )
 
 
 class AskResponse(BaseModel):
@@ -18,6 +35,9 @@ class AskResponse(BaseModel):
     used_tool: str | None = None
     data: dict | list[dict] | None = None
     error: str | None = None
+    intent: SupportedIntent | None = None
+    traffic_source: AllowedTrafficSource | None = None
+    date_range: DateRange | None = None
 
 
 class CacheStatusResponse(BaseModel):
@@ -37,6 +57,7 @@ class DashboardOverviewSummary(BaseModel):
     """High-level KPI summary for the dashboard overview."""
 
     totalUsers: int
+    totalConvertedUsers: int | None = None
     totalOrders: int
     revenue: float
     conversionRate: float

@@ -94,6 +94,7 @@ class DashboardOverviewService:
             )
 
         total_users = sum(int(row["users"]) for row in channel_rows)
+        total_converted_users = sum(int(row["converted_users"]) for row in channel_rows)
         total_orders = sum(int(row["orders"]) for row in channel_rows)
         total_revenue = sum(float(row["revenue"]) for row in channel_rows)
         top_channel = channel_rows[0]["traffic_source"] if channel_rows else "Indisponivel"
@@ -106,9 +107,12 @@ class DashboardOverviewService:
             lastSnapshotAt=last_snapshot_at,
             summary=DashboardOverviewSummary(
                 totalUsers=total_users,
+                totalConvertedUsers=total_converted_users,
                 totalOrders=total_orders,
                 revenue=round(total_revenue, 2),
-                conversionRate=_percentage_from_ratio(total_orders / total_users)
+                conversionRate=_percentage_from_ratio(
+                    total_converted_users / total_users
+                )
                 if total_users > 0
                 else 0.0,
                 topChannel=top_channel,
@@ -179,9 +183,9 @@ def _parse_snapshot_datetime(value: str | None) -> datetime | None:
 def _percentage_from_ratio(value: float) -> float:
     """Normalize decimal ratios into human-readable percentage values."""
 
-    if value <= 1:
-        return round(value * 100, 2)
-    return round(value, 2)
+    if value < 0 or value > 1:
+        raise ValueError("conversion_rate invalid: expected a value between 0 and 1.")
+    return round(value * 100, 2)
 
 
 def _build_dashboard_insights(

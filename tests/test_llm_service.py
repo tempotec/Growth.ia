@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date
 from unittest.mock import Mock, patch
 
 import pytest
@@ -12,6 +13,7 @@ from app.agent.prompts import (
     ANSWER_SYSTEM_PROMPT,
     PARSE_SYSTEM_PROMPT,
     build_answer_user_prompt,
+    build_parse_user_prompt,
 )
 from app.services.llm_service import LLMService, LLMServiceError
 
@@ -59,6 +61,139 @@ def test_parse_question_returns_validated_parsed_question() -> None:
     assert result.traffic_source == "Search"
 
 
+def test_parse_question_includes_conversation_history_in_prompt() -> None:
+    client = Mock()
+    client.chat.completions.create.return_value = _build_chat_response(
+        json.dumps(
+            {
+                "intent": "traffic_volume_by_source",
+                "traffic_source": "Search",
+                "date_range": {
+                    "start_date": "2026-02-01",
+                    "end_date": "2026-03-31",
+                },
+                "needs_data": True,
+                "out_of_scope_reason": None,
+            }
+        )
+    )
+    service = LLMService(client=client, model="test-model")
+    history = [
+        {
+            "role": "assistant",
+            "content": "Search teve 2478 usuarios nos ultimos 30 dias.",
+            "intent": "traffic_volume_by_source",
+            "traffic_source": "Search",
+            "date_range": {
+                "start_date": "2026-04-08",
+                "end_date": "2026-05-07",
+            },
+        }
+    ]
+
+    service.parse_question("E em fevereiro e marco?", conversation_history=history)
+
+    messages = client.chat.completions.create.call_args.kwargs["messages"]
+    prompt_payload = json.loads(messages[1]["content"])
+    assert prompt_payload["conversation_history"][0]["traffic_source"] == "Search"
+    assert prompt_payload["conversation_history"][0]["intent"] == "traffic_volume_by_source"
+
+
+def test_parse_question_prioritizes_channel_performance_for_short_source_followup() -> None:
+    client = Mock()
+    service = LLMService(client=client, model="test-model")
+    history = [
+        {
+            "role": "assistant",
+            "content": "Direct e Referral tem baixo desempenho no periodo.",
+            "intent": "best_channel_performance",
+            "traffic_source": None,
+            "date_range": {
+                "start_date": "2026-04-08",
+                "end_date": "2026-05-07",
+            },
+        }
+    ]
+
+    result = service.parse_question(
+        "e o Facebook nesse periodo?",
+        conversation_history=history,
+    )
+
+    assert result.intent == "channel_performance_by_source"
+    assert result.traffic_source == "Facebook"
+    assert result.date_range.start_date.isoformat() == "2026-04-08"
+    assert result.date_range.end_date.isoformat() == "2026-05-07"
+    client.chat.completions.create.assert_not_called()
+
+
+def test_parse_question_prioritizes_channel_performance_for_source_data_month() -> None:
+    client = Mock()
+    service = LLMService(client=client, model="test-model")
+
+    result = service.parse_question("me mostra os dados do Search em marco")
+
+    assert result.intent == "channel_performance_by_source"
+    assert result.traffic_source == "Search"
+    assert result.date_range.start_date.isoformat() == f"{date.today().year}-03-01"
+    assert result.date_range.end_date.isoformat() == f"{date.today().year}-03-31"
+    client.chat.completions.create.assert_not_called()
+
+
+def test_parse_question_resolves_recommendation_from_recent_channel_context() -> None:
+    client = Mock()
+    service = LLMService(client=client, model="test-model")
+    history = [
+        {
+            "role": "assistant",
+            "content": "Display teve baixa conversao no periodo.",
+            "intent": "channel_performance_by_source",
+            "traffic_source": "Display",
+            "date_range": {
+                "start_date": "2026-04-09",
+                "end_date": "2026-05-08",
+            },
+        }
+    ]
+
+    result = service.parse_question(
+        "O que voce investigaria antes de tomar uma decisao?",
+        conversation_history=history,
+    )
+
+    assert result.intent == "recommendation"
+    assert result.traffic_source == "Display"
+    assert result.date_range.start_date.isoformat() == "2026-04-09"
+    assert result.date_range.end_date.isoformat() == "2026-05-08"
+    client.chat.completions.create.assert_not_called()
+
+
+def test_parse_question_resolves_contextual_business_followup_as_recommendation() -> None:
+    client = Mock()
+    service = LLMService(client=client, model="test-model")
+    history = [
+        {
+            "role": "assistant",
+            "content": "Search liderou em receita no periodo.",
+            "intent": "best_channel_performance",
+            "traffic_source": "Search",
+            "date_range": {
+                "start_date": "2026-04-09",
+                "end_date": "2026-05-08",
+            },
+        }
+    ]
+
+    result = service.parse_question(
+        "Ele teve mais trafego, mais receita ou melhor conversao?",
+        conversation_history=history,
+    )
+
+    assert result.intent == "recommendation"
+    assert result.traffic_source == "Search"
+    client.chat.completions.create.assert_not_called()
+
+
 def test_parse_question_raises_controlled_error_for_invalid_payload() -> None:
     client = Mock()
     client.chat.completions.create.return_value = _build_chat_response("not-json")
@@ -95,14 +230,39 @@ def test_answer_prompt_enforces_pt_br_and_business_guidance() -> None:
 
     assert "português do Brasil" in ANSWER_SYSTEM_PROMPT
     assert "Nunca responda em inglês" in ANSWER_SYSTEM_PROMPT
-    assert "Entregue insight de negócio" in ANSWER_SYSTEM_PROMPT
+    assert "transformar dados de performance em insight acionável" in ANSWER_SYSTEM_PROMPT
     assert payload["response_guidance"]["language"] == "pt-BR"
     assert "não inventar dados que a tool não retornou" in payload["response_guidance"]["business_rules"]
 
 
 def test_parse_prompt_uses_supported_out_of_scope_contract() -> None:
+    assert "Regras de prioridade" in PARSE_SYSTEM_PROMPT
     assert "out_of_scope_reason=unsupported_intent" in PARSE_SYSTEM_PROMPT
-    assert "últimos 30 dias" in PARSE_SYSTEM_PROMPT
+    assert "channel_performance_by_source" in PARSE_SYSTEM_PROMPT
+    assert "recommendation" in PARSE_SYSTEM_PROMPT
+    assert "dados" in PARSE_SYSTEM_PROMPT
+    assert "e o Facebook" in PARSE_SYSTEM_PROMPT
+    assert "março" in PARSE_SYSTEM_PROMPT
+    assert "conversation_history" in PARSE_SYSTEM_PROMPT
+    assert "out_of_scope_reason=needs_clarification" in PARSE_SYSTEM_PROMPT
+
+
+def test_build_parse_prompt_limits_recent_history() -> None:
+    history = [
+        {"role": "user", "content": f"Pergunta {index}"}
+        for index in range(12)
+    ]
+
+    payload = json.loads(
+        build_parse_user_prompt(
+            "E fevereiro?",
+            today=date(2026, 5, 7),
+            conversation_history=history,
+        )
+    )
+
+    assert len(payload["conversation_history"]) == 10
+    assert payload["conversation_history"][0]["content"] == "Pergunta 2"
 
 
 def test_generate_answer_raises_controlled_error_when_completion_fails() -> None:

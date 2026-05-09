@@ -132,25 +132,13 @@ class AnalyticsRepository:
               SELECT traffic_source
               FROM UNNEST(@traffic_sources) AS traffic_source
             ),
-            users_agg AS (
+            users_base AS (
               SELECT
-                traffic_source,
-                COUNT(DISTINCT id) AS users
+                id,
+                traffic_source
               FROM `{USERS_TABLE}`
               WHERE traffic_source IN UNNEST(@traffic_sources)
                 AND DATE(created_at) BETWEEN @start_date AND @end_date
-              GROUP BY traffic_source
-            ),
-            orders_agg AS (
-              SELECT
-                u.traffic_source AS traffic_source,
-                COUNT(DISTINCT o.order_id) AS orders
-              FROM `{ORDERS_TABLE}` AS o
-              INNER JOIN `{USERS_TABLE}` AS u
-                ON u.id = o.user_id
-              WHERE u.traffic_source IN UNNEST(@traffic_sources)
-                AND DATE(o.created_at) BETWEEN @start_date AND @end_date
-              GROUP BY u.traffic_source
             ),
             order_revenue AS (
               SELECT
@@ -159,32 +147,36 @@ class AnalyticsRepository:
               FROM `{ORDER_ITEMS_TABLE}`
               GROUP BY order_id
             ),
-            revenue_agg AS (
+            performance_agg AS (
               SELECT
-                u.traffic_source AS traffic_source,
-                ROUND(SUM(orv.revenue), 2) AS revenue
-              FROM `{ORDERS_TABLE}` AS o
-              INNER JOIN `{USERS_TABLE}` AS u
-                ON u.id = o.user_id
-              INNER JOIN order_revenue AS orv
-                ON orv.order_id = o.order_id
-              WHERE u.traffic_source IN UNNEST(@traffic_sources)
+                ub.traffic_source AS traffic_source,
+                COUNT(DISTINCT ub.id) AS users,
+                COUNT(DISTINCT CASE
+                  WHEN o.order_id IS NOT NULL THEN ub.id
+                END) AS converted_users,
+                COUNT(DISTINCT o.order_id) AS orders,
+                ROUND(COALESCE(SUM(orv.revenue), 0), 2) AS revenue
+              FROM users_base AS ub
+              LEFT JOIN `{ORDERS_TABLE}` AS o
+                ON o.user_id = ub.id
                 AND DATE(o.created_at) BETWEEN @start_date AND @end_date
-              GROUP BY u.traffic_source
+              LEFT JOIN order_revenue AS orv
+                ON orv.order_id = o.order_id
+              GROUP BY ub.traffic_source
             )
             SELECT
               sd.traffic_source AS traffic_source,
-              COALESCE(ua.users, 0) AS users,
-              COALESCE(oa.orders, 0) AS orders,
-              COALESCE(ra.revenue, 0) AS revenue,
-              SAFE_DIVIDE(COALESCE(oa.orders, 0), NULLIF(COALESCE(ua.users, 0), 0)) AS conversion_rate
+              COALESCE(pa.users, 0) AS users,
+              COALESCE(pa.converted_users, 0) AS converted_users,
+              COALESCE(pa.orders, 0) AS orders,
+              COALESCE(pa.revenue, 0) AS revenue,
+              SAFE_DIVIDE(
+                COALESCE(pa.converted_users, 0),
+                NULLIF(COALESCE(pa.users, 0), 0)
+              ) AS conversion_rate
             FROM source_dim AS sd
-            LEFT JOIN users_agg AS ua
-              ON ua.traffic_source = sd.traffic_source
-            LEFT JOIN orders_agg AS oa
-              ON oa.traffic_source = sd.traffic_source
-            LEFT JOIN revenue_agg AS ra
-              ON ra.traffic_source = sd.traffic_source
+            LEFT JOIN performance_agg AS pa
+              ON pa.traffic_source = sd.traffic_source
             ORDER BY conversion_rate DESC, revenue DESC
         """
         parameters = [
@@ -199,9 +191,12 @@ class AnalyticsRepository:
             {
                 "traffic_source": row["traffic_source"],
                 "users": int(row["users"] or 0),
+                "converted_users": int(row["converted_users"] or 0),
                 "orders": int(row["orders"] or 0),
                 "revenue": float(row["revenue"] or 0),
-                "conversion_rate": float(row["conversion_rate"] or 0),
+                "conversion_rate": _validate_conversion_rate(
+                    row["conversion_rate"] or 0
+                ),
                 "start_date": resolved_start_date.isoformat(),
                 "end_date": resolved_end_date.isoformat(),
             }
@@ -286,3 +281,14 @@ class AnalyticsRepository:
             )
 
         return resolved_start_date, resolved_end_date
+
+
+def _validate_conversion_rate(value: object) -> float:
+    """Return a decimal conversion rate, rejecting order/user ratios."""
+
+    conversion_rate = float(value or 0)
+    if conversion_rate < 0 or conversion_rate > 1:
+        raise AnalyticsRepositoryError(
+            "conversion_rate invalid: expected a value between 0 and 1."
+        )
+    return conversion_rate

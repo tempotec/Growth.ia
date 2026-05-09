@@ -19,10 +19,18 @@ class CacheSettings(BaseSettings):
         default="data/glacier_cache.db",
         alias="LOCAL_CACHE_DB_PATH",
     )
-    cache_refresh_minutes: int = Field(default=10, alias="CACHE_REFRESH_MINUTES")
+    cache_refresh_minutes: int = Field(default=60, alias="CACHE_REFRESH_MINUTES")
     data_source_mode: DataSourceMode = Field(
         default="bigquery_direct",
         alias="DATA_SOURCE_MODE",
+    )
+    auto_sync_cache_on_startup: bool = Field(
+        default=False,
+        alias="AUTO_SYNC_CACHE_ON_STARTUP",
+    )
+    auto_sync_cache_interval: bool = Field(
+        default=False,
+        alias="AUTO_SYNC_CACHE_INTERVAL",
     )
 
     model_config = SettingsConfigDict(

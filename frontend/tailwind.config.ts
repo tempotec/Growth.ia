@@ -9,15 +9,21 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        ink: "#0f172a",
-        mist: "#eef2ff",
-        sand: "#f8f2e8",
-        moss: "#d8e4cc",
-        ember: "#d97706",
-        pine: "#245946",
+        cream: "#FFF7E8",
+        surface: "#FFFFFF",
+        skySoft: "#EAF6FF",
+        ink: "#24313A",
+        muted: "#6B7C89",
+        borderSoft: "#E8DDC8",
+        pistachio: "#B8D979",
+        pistachioDark: "#8FB45A",
+        orange: "#F79A3E",
+        coral: "#F2634A",
+        blueSoft: "#8FC4E8",
+        yellowStar: "#FFD36A",
       },
       boxShadow: {
-        panel: "0 20px 40px rgba(15, 23, 42, 0.08)",
+        panel: "0 20px 40px rgba(36, 49, 58, 0.08)",
       },
     },
   },

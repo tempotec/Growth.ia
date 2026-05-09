@@ -15,6 +15,7 @@ def test_cache_sync_service_materializes_all_supported_views() -> None:
         {
             "traffic_source": "Organic",
             "users": 1000,
+            "converted_users": 80,
             "orders": 80,
             "revenue": 5500.0,
             "conversion_rate": 0.08,

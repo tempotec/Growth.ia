@@ -13,7 +13,7 @@ def test_post_ask_returns_successful_response(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "app.api.routes.run_agent_question",
-        lambda question: {
+        lambda question, conversation_history=None: {
             "intent": "best_channel_performance",
             "tool_name": "get_channel_performance_summary",
             "tool_result": [{"traffic_source": "Organic", "conversion_rate": 0.08}],
@@ -29,13 +29,60 @@ def test_post_ask_returns_successful_response(monkeypatch) -> None:
     assert response.json()["error"] is None
 
 
+def test_post_ask_forwards_conversation_history(monkeypatch) -> None:
+    app = create_app()
+    client = TestClient(app)
+    captured_history = []
+
+    def fake_run_agent_question(question: str, conversation_history=None) -> dict:
+        captured_history.extend(conversation_history or [])
+        return {
+            "intent": "traffic_volume_by_source",
+            "traffic_source": "Search",
+            "date_range": {
+                "start_date": "2026-02-01",
+                "end_date": "2026-03-31",
+            },
+            "tool_name": "get_users_by_source",
+            "tool_result": {"traffic_source": "Search", "users": 123},
+            "answer": "Search trouxe 123 usuarios no periodo.",
+            "error": None,
+        }
+
+    monkeypatch.setattr("app.api.routes.run_agent_question", fake_run_agent_question)
+
+    response = client.post(
+        "/ask",
+        json={
+            "question": "E em fevereiro e marco?",
+            "conversation_history": [
+                {
+                    "role": "assistant",
+                    "content": "Search teve 2478 usuarios nos ultimos 30 dias.",
+                    "intent": "traffic_volume_by_source",
+                    "traffic_source": "Search",
+                    "date_range": {
+                        "start_date": "2026-04-08",
+                        "end_date": "2026-05-07",
+                    },
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured_history[0]["traffic_source"] == "Search"
+    assert response.json()["intent"] == "traffic_volume_by_source"
+    assert response.json()["date_range"]["start_date"] == "2026-02-01"
+
+
 def test_post_ask_returns_out_of_scope_response(monkeypatch) -> None:
     app = create_app()
     client = TestClient(app)
 
     monkeypatch.setattr(
         "app.api.routes.run_agent_question",
-        lambda question: {
+        lambda question, conversation_history=None: {
             "intent": "out_of_scope",
             "tool_name": None,
             "tool_result": None,
@@ -59,7 +106,7 @@ def test_post_ask_handles_simple_greeting_without_agent(monkeypatch) -> None:
     app = create_app()
     client = TestClient(app)
 
-    def fail_if_called(question: str) -> dict:
+    def fail_if_called(question: str, conversation_history=None) -> dict:
         raise AssertionError("Agent should not be called for simple greetings.")
 
     monkeypatch.setattr("app.api.routes.run_agent_question", fail_if_called)
@@ -89,7 +136,7 @@ def test_post_ask_returns_bad_request_for_controlled_agent_error(monkeypatch) ->
 
     monkeypatch.setattr(
         "app.api.routes.run_agent_question",
-        lambda question: {
+        lambda question, conversation_history=None: {
             "intent": "traffic_volume_by_source",
             "tool_name": "get_users_by_source",
             "tool_result": None,
@@ -109,7 +156,7 @@ def test_post_ask_returns_internal_error_for_unexpected_failure(monkeypatch) -> 
     app = create_app()
     client = TestClient(app)
 
-    def raise_error(question: str) -> dict:
+    def raise_error(question: str, conversation_history=None) -> dict:
         raise RuntimeError("boom")
 
     monkeypatch.setattr("app.api.routes.run_agent_question", raise_error)
@@ -128,7 +175,7 @@ def test_post_ask_returns_service_unavailable_for_missing_local_cache_snapshot(
 
     monkeypatch.setattr(
         "app.api.routes.run_agent_question",
-        lambda question: {
+        lambda question, conversation_history=None: {
             "intent": "best_channel_performance",
             "tool_name": "get_channel_performance_summary",
             "tool_result": None,
@@ -153,6 +200,26 @@ def test_get_health_returns_ok() -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
     assert "X-Request-ID" in response.headers
+
+
+def test_app_lifespan_starts_and_stops_cache_scheduler(monkeypatch) -> None:
+    events = []
+
+    class StubCacheScheduler:
+        async def start(self) -> None:
+            events.append("start")
+
+        async def stop(self) -> None:
+            events.append("stop")
+
+    monkeypatch.setattr("app.main.CacheSchedulerService", StubCacheScheduler)
+
+    app = create_app()
+    with TestClient(app) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    assert events == ["start", "stop"]
 
 
 def test_health_preflight_allows_frontend_origin() -> None:

@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { askQuestion } from "@/lib/api";
-import type { ChatMessage, CopilotMessage } from "@/lib/types";
+import type {
+  BackendStatus,
+  ChatMessage,
+  ConversationMessage,
+  CopilotMessage,
+} from "@/lib/types";
 
 const SUGGESTED_QUESTIONS = [
   "Como foi o volume de usuários vindos de Search no último mês?",
@@ -12,17 +17,24 @@ const SUGGESTED_QUESTIONS = [
   "Existe algum canal com baixo desempenho?",
 ];
 const OUT_OF_SCOPE_ERROR = "unsupported_intent";
+const CONVERSATION_HISTORY_LIMIT = 10;
 
 type CopilotPanelProps = {
   automaticMessages: CopilotMessage[];
+  backendStatus: BackendStatus;
   isLoading: boolean;
 };
 
-export function CopilotPanel({ automaticMessages, isLoading }: CopilotPanelProps) {
+export function CopilotPanel({
+  automaticMessages,
+  backendStatus,
+  isLoading,
+}: CopilotPanelProps) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isOnline = backendStatus === "online";
 
   // Auto-scroll para a última mensagem
   useEffect(() => {
@@ -33,6 +45,8 @@ export function CopilotPanel({ automaticMessages, isLoading }: CopilotPanelProps
 
   const handleSendQuestion = async (question: string) => {
     if (!question.trim() || isSending) return;
+
+    const conversationHistory = buildConversationHistory(chatMessages);
 
     // Adicionar mensagem do usuário
     const userMessageId = `user-${Date.now()}`;
@@ -62,7 +76,7 @@ export function CopilotPanel({ automaticMessages, isLoading }: CopilotPanelProps
     ]);
 
     try {
-      const response = await askQuestion(question);
+      const response = await askQuestion(question, conversationHistory);
 
       // Remover loading
       setChatMessages((prev) => prev.filter((msg) => msg.id !== loadingId));
@@ -86,6 +100,9 @@ export function CopilotPanel({ automaticMessages, isLoading }: CopilotPanelProps
             role: "assistant",
             content: response.answer,
             toolUsed: response.error === OUT_OF_SCOPE_ERROR ? null : response.used_tool,
+            intent: response.intent,
+            traffic_source: response.traffic_source,
+            date_range: response.date_range,
             status: "done",
           },
         ]);
@@ -121,43 +138,72 @@ export function CopilotPanel({ automaticMessages, isLoading }: CopilotPanelProps
     }
   };
 
+  const handleClearConversation = () => {
+    if (isSending) return;
+    setChatMessages([]);
+    setInputValue("");
+  };
+
   const hasMessages = chatMessages.length > 0;
 
   return (
-    <div className="flex h-full flex-col bg-slate-900/40">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
+    <aside className="sticky top-24 flex h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-3xl border border-stone-200 bg-white/80 shadow-xl">
+      {/* Header fixo */}
+      <div className="shrink-0 flex items-center justify-between border-b border-borderSoft px-4 py-3">
         <div className="flex items-center gap-3">
-          <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-300 to-violet-300 text-sm font-semibold text-slate-950">
+          <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-pistachio/35 text-sm font-semibold text-ink">
             IA
-            <span className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-slate-950 bg-emerald-400" />
+            <span
+              className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-white ${
+                isOnline ? "bg-lime-500" : "bg-red-500"
+              }`}
+              title={isOnline ? "Copiloto online" : "Copiloto offline"}
+            />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-slate-50">Copiloto</h2>
-            <p className="text-[11px] text-slate-500">
+            <h2 className="text-base font-semibold text-ink">Copiloto</h2>
+            <p className="text-[11px] text-muted">
               {hasMessages ? "Chat com agente" : "Faça uma pergunta"}
             </p>
           </div>
         </div>
-        <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-medium text-emerald-100">
-          Ativo
-        </span>
+        <div className="flex items-center gap-2">
+          {hasMessages && (
+            <button
+              type="button"
+              onClick={handleClearConversation}
+              disabled={isSending}
+              className="rounded-full border border-borderSoft bg-white/70 px-2.5 py-1 text-[11px] font-medium text-muted transition-colors hover:border-orange/50 hover:bg-cream disabled:opacity-50"
+            >
+              Limpar conversa
+            </button>
+          )}
+          <span
+            className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+              isOnline
+                ? "border-lime-300 bg-lime-100 text-lime-800"
+                : "border-red-300 bg-red-100 text-red-700"
+            }`}
+          >
+            {isOnline ? "Ativo" : "Offline"}
+          </span>
+        </div>
       </div>
 
-      {/* Chat area or automatic summary */}
+      {/* Área que rola */}
       <div className="flex-1 overflow-y-auto px-4 py-5">
         <div
           ref={scrollRef}
-          className="custom-scrollbar flex h-full flex-col gap-4 overflow-y-auto pr-1"
+          className="custom-scrollbar flex flex-col gap-4 pr-1"
         >
           {/* Mostrar sumário automático se não há mensagens de chat */}
           {!hasMessages && (
             <>
-              <div className="mb-2 text-xs font-medium text-slate-500">
+              <div className="mb-2 text-xs font-medium text-muted">
                 Resumo automático do overview
               </div>
               {isLoading ? (
-                <div className="rounded-[20px] border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                <div className="rounded-[20px] border border-borderSoft bg-white/70 p-4 text-sm text-muted">
                   Aguardando resposta do backend para gerar insights determinísticos.
                 </div>
               ) : (
@@ -179,12 +225,12 @@ export function CopilotPanel({ automaticMessages, isLoading }: CopilotPanelProps
         </div>
       </div>
 
-      {/* Input area */}
-      <div className="border-t border-white/8 px-4 py-4">
+      {/* Input fixo embaixo */}
+      <div className="shrink-0 border-t border-borderSoft bg-white/90 px-4 py-4">
         {/* Suggested questions */}
         {!hasMessages && (
           <>
-            <p className="mb-3 text-xs font-medium text-slate-500">Perguntas sugeridas</p>
+            <p className="mb-3 text-xs font-medium text-muted">Perguntas sugeridas</p>
             <div className="mb-4 flex flex-wrap gap-2">
               {SUGGESTED_QUESTIONS.map((question) => (
                 <button
@@ -192,7 +238,7 @@ export function CopilotPanel({ automaticMessages, isLoading }: CopilotPanelProps
                   type="button"
                   onClick={() => handleSendQuestion(question)}
                   disabled={isSending}
-                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-300 transition-colors hover:border-white/20 hover:bg-white/10 disabled:opacity-50"
+                  className="rounded-full border border-borderSoft bg-white/70 px-3 py-1.5 text-xs text-muted transition-colors hover:border-orange/50 hover:bg-cream disabled:opacity-50"
                 >
                   {question}
                 </button>
@@ -202,7 +248,7 @@ export function CopilotPanel({ automaticMessages, isLoading }: CopilotPanelProps
         )}
 
         {/* Input field */}
-        <div className="rounded-[20px] border border-white/10 bg-slate-950/60 p-2">
+        <div className="rounded-[20px] border border-borderSoft bg-white/80 p-2">
           <div className="flex items-end gap-2">
             <textarea
               value={inputValue}
@@ -211,13 +257,13 @@ export function CopilotPanel({ automaticMessages, isLoading }: CopilotPanelProps
               disabled={isSending}
               placeholder="Faça uma pergunta sobre seus dados..."
               rows={1}
-              className="min-h-[44px] flex-1 resize-none bg-transparent px-1 py-2 text-sm text-slate-50 outline-none placeholder:text-slate-600 disabled:opacity-50"
+              className="min-h-[44px] flex-1 resize-none bg-transparent px-1 py-2 text-sm text-ink outline-none placeholder:text-muted/70 disabled:opacity-50"
             />
             <button
               type="button"
               onClick={() => handleSendQuestion(inputValue)}
               disabled={isSending || !inputValue.trim()}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/5 text-xs font-semibold text-slate-300 transition-colors hover:bg-white/10 disabled:opacity-50"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-coral/15 text-xs font-semibold text-ink transition-colors hover:bg-coral/25 disabled:opacity-50"
               aria-label="Enviar pergunta"
             >
               →
@@ -225,24 +271,53 @@ export function CopilotPanel({ automaticMessages, isLoading }: CopilotPanelProps
           </div>
         </div>
       </div>
-    </div>
+    </aside>
   );
+}
+
+function buildConversationHistory(messages: ChatMessage[]): ConversationMessage[] {
+  return messages
+    .filter(
+      (message): message is ChatMessage & { role: "user" | "assistant" } =>
+        (message.role === "user" || message.role === "assistant") &&
+        message.status === "done" &&
+        message.content.trim().length > 0,
+    )
+    .map((message) => {
+      const historyMessage: ConversationMessage = {
+        role: message.role,
+        content: message.content,
+      };
+
+      if (message.intent) {
+        historyMessage.intent = message.intent;
+      }
+      if (message.traffic_source) {
+        historyMessage.traffic_source = message.traffic_source;
+      }
+      if (message.date_range) {
+        historyMessage.date_range = message.date_range;
+      }
+
+      return historyMessage;
+    })
+    .slice(-CONVERSATION_HISTORY_LIMIT);
 }
 
 function AutomaticMessageBubble({ message }: { message: CopilotMessage }) {
   const bgColorClass =
     message.type === "success"
-      ? "bg-emerald-400/10 border-emerald-400/20"
+      ? "bg-pistachio/20 border-pistachio/70"
       : message.type === "warning"
-        ? "bg-amber-400/10 border-amber-400/20"
-        : "bg-white/5 border-white/10";
+        ? "bg-yellowStar/25 border-yellowStar/70"
+        : "bg-white/70 border-borderSoft";
 
   const textColorClass =
     message.type === "success"
-      ? "text-emerald-100"
+      ? "text-ink"
       : message.type === "warning"
-        ? "text-amber-100"
-        : "text-slate-100";
+        ? "text-ink"
+        : "text-ink";
 
   return (
     <div className={`rounded-[20px] border p-4 text-sm ${bgColorClass} ${textColorClass}`}>
@@ -259,7 +334,7 @@ function ChatMessageBubble({ message }: { message: ChatMessage }) {
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-xs rounded-[20px] bg-sky-500/20 px-4 py-2 text-sm text-slate-50">
+        <div className="max-w-xs rounded-[20px] bg-blueSoft/30 px-4 py-2 text-sm text-ink">
           {message.content}
         </div>
       </div>
@@ -272,19 +347,14 @@ function ChatMessageBubble({ message }: { message: ChatMessage }) {
         <div
           className={`rounded-[20px] px-4 py-2 text-sm ${
             isError
-              ? "border border-rose-400/20 bg-rose-400/10 text-rose-100"
+              ? "border border-coral/35 bg-coral/15 text-ink"
               : message.status === "sending"
-                ? "border border-white/10 bg-white/5 text-slate-300 italic"
-                : "border border-white/10 bg-white/5 text-slate-50"
+                ? "border border-borderSoft bg-white/65 text-muted italic"
+                : "border border-borderSoft bg-white/75 text-ink"
           }`}
         >
           {message.content}
         </div>
-        {message.toolUsed && !isError && (
-          <div className="px-1 text-[11px] text-slate-400">
-            <span className="text-slate-500">Tool:</span> {message.toolUsed}
-          </div>
-        )}
       </div>
     </div>
   );

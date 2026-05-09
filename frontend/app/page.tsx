@@ -30,19 +30,21 @@ type ContractCard = {
 
 const navItems = [
   { label: "Dashboard", active: true },
-  { label: "Analytics", active: false },
-  { label: "Relatorios", active: false },
-  { label: "Configuracoes", active: false },
+  { label: "Análises", active: false },
+  { label: "Relatórios", active: false },
+  { label: "Configurações", active: false },
 ];
 
 const CHANNEL_COLORS: Record<string, string> = {
-  Display: "#38bdf8",
-  Email: "#a78bfa",
-  Facebook: "#fb7185",
-  Organic: "#34d399",
-  Search: "#facc15",
-  Direct: "#f97316",
-  Referral: "#94a3b8",
+  Search: "#8FC4E8",
+  "Organic Search": "#B8D979",
+  Organic: "#B8D979",
+  Facebook: "#F2634A",
+  "Facebook Ads": "#F2634A",
+  Email: "#FFD36A",
+  Direct: "#F79A3E",
+  Display: "#8FB45A",
+  Referral: "#6B7C89",
 };
 
 const CHANNEL_COLOR_ALIASES: Record<string, string> = {
@@ -53,7 +55,7 @@ const CHANNEL_COLOR_ALIASES: Record<string, string> = {
   "Facebook Ads": "Facebook",
 };
 
-const FALLBACK_CHANNEL_COLOR = "#cbd5e1";
+const FALLBACK_CHANNEL_COLOR = "#6B7C89";
 
 const contractCards: ContractCard[] = [
   {
@@ -107,15 +109,9 @@ const contractCards: ContractCard[] = [
   },
 ];
 
-const backendStatusTone: Record<BackendStatus, string> = {
-  checking: "border-amber-400/30 bg-amber-400/10 text-amber-100",
-  online: "border-emerald-400/30 bg-emerald-400/10 text-emerald-100",
-  offline: "border-rose-400/30 bg-rose-400/10 text-rose-100",
-};
-
 function formatDateTime(value: string | null): string {
   if (!value) {
-    return "Aguardando primeira sincronizacao";
+    return "Aguardando primeira sincronização";
   }
 
   const parsed = new Date(value);
@@ -234,18 +230,6 @@ function getChannelColor(channel: string): string {
   return CHANNEL_COLORS[colorKey] ?? FALLBACK_CHANNEL_COLOR;
 }
 
-function statusLabel(status: BackendStatus): string {
-  if (status === "checking") {
-    return "Carregando";
-  }
-
-  if (status === "online") {
-    return "Online";
-  }
-
-  return "Offline";
-}
-
 function statusText(state: DashboardState): string {
   if (state === "loading") {
     return "Carregando dados";
@@ -260,7 +244,7 @@ function statusText(state: DashboardState): string {
   }
 
   if (state === "offline") {
-    return "Backend offline";
+    return "Sem conexão";
   }
 
   return "Erro na consulta";
@@ -268,14 +252,14 @@ function statusText(state: DashboardState): string {
 
 function insightTone(type: DashboardInsight["type"]): string {
   if (type === "warning") {
-    return "border-l-rose-400";
+    return "border-l-coral";
   }
 
   if (type === "success") {
-    return "border-l-emerald-400";
+    return "border-l-pistachioDark";
   }
 
-  return "border-l-sky-300";
+  return "border-l-blueSoft";
 }
 
 function FilterChip({
@@ -289,16 +273,16 @@ function FilterChip({
 }) {
   const accentClass =
     accent === "primary"
-      ? "border-sky-400/30 bg-sky-400/10 text-sky-100"
+      ? "border-blueSoft/60 bg-blueSoft/20 text-ink"
       : accent === "tertiary"
-        ? "border-violet-400/30 bg-violet-400/10 text-violet-100"
-        : "border-white/10 bg-white/5 text-slate-200";
+        ? "border-pistachio/70 bg-pistachio/20 text-ink"
+        : "border-borderSoft bg-white/70 text-ink";
 
   return (
     <div
       className={`glass-panel flex min-w-[144px] flex-col gap-1 rounded-2xl px-3 py-2 ${accentClass}`}
     >
-      <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted">
         {label}
       </span>
       <span className="text-sm font-medium">{value}</span>
@@ -309,29 +293,22 @@ function FilterChip({
 function KpiCard({
   label,
   value,
-  helper,
+  description,
   accent,
 }: {
   label: string;
   value: string;
-  helper: string;
+  description: string;
   accent: string;
 }) {
   return (
     <div className="glass-panel rounded-[22px] p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div
-          className={`flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900/70 text-sm font-semibold ${accent}`}
-        >
-          {label.slice(0, 1).toUpperCase()}
-        </div>
-        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-400">
-          contrato real
-        </span>
+      <div className={`flex h-10 w-10 items-center justify-center rounded-xl bg-cream text-sm font-semibold ${accent}`}>
+        {label.slice(0, 1).toUpperCase()}
       </div>
-      <p className="mt-5 text-sm font-medium text-slate-400">{label}</p>
-      <p className="mt-2 text-4xl font-semibold tracking-tight text-slate-50">{value}</p>
-      <p className="mt-2 text-sm text-slate-500">{helper}</p>
+      <p className="mt-5 text-sm font-medium text-muted">{label}</p>
+      <p className="mt-2 text-4xl font-semibold tracking-tight text-ink">{value}</p>
+      <p className="mt-2 text-sm text-muted">{description}</p>
     </div>
   );
 }
@@ -371,12 +348,12 @@ function TrafficBySourceChart({
 
   if (chartData.length === 0 || channels.length === 0) {
     return (
-      <div className="rounded-[20px] border border-dashed border-white/10 bg-slate-950/45 p-5">
-        <p className="text-sm text-slate-300">
-          Ainda nao ha serie temporal de trafego disponivel.
+      <div className="rounded-[20px] border border-dashed border-borderSoft bg-cream/55 p-5">
+        <p className="text-sm text-ink">
+          Ainda não há série temporal de tráfego disponível.
         </p>
-        <p className="mt-2 text-sm text-slate-500">
-          Quando o primeiro snapshot com dados diarios for processado, este grafico sera
+        <p className="mt-2 text-sm text-muted">
+          Quando o primeiro snapshot com dados diários for processado, este gráfico será
           preenchido automaticamente.
         </p>
       </div>
@@ -407,7 +384,7 @@ function TrafficBySourceChart({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-3 text-xs text-slate-400">
+      <div className="flex flex-wrap gap-3 text-xs text-muted">
         {channels.map((channel) => (
           <div key={channel} className="inline-flex items-center gap-2">
             <span
@@ -420,13 +397,13 @@ function TrafficBySourceChart({
       </div>
 
       <div
-        className="relative h-[320px] overflow-hidden rounded-[20px] border border-white/6 bg-slate-950/45 p-4"
+        className="relative h-[320px] overflow-hidden rounded-[20px] border border-borderSoft bg-white/60 p-4"
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoveredIndex(null)}
       >
         <div className="absolute inset-0 grid grid-rows-4 px-4 py-4">
           {Array.from({ length: 4 }).map((_, index) => (
-            <div key={index} className="border-t border-white/6" />
+            <div key={index} className="border-t border-borderSoft/70" />
           ))}
         </div>
 
@@ -462,7 +439,7 @@ function TrafficBySourceChart({
                     cy={chartHeight - (values[activeIndex] / maxValue) * chartHeight}
                     r="2.6"
                     fill={getChannelColor(channel)}
-                    stroke="#0f172a"
+                    stroke="#FFF7E8"
                     strokeWidth="1.2"
                   />
                 ) : null}
@@ -475,7 +452,7 @@ function TrafficBySourceChart({
               x2={activeX}
               y1={0}
               y2={chartHeight}
-              stroke="rgba(148, 163, 184, 0.45)"
+              stroke="rgba(107, 124, 137, 0.45)"
               strokeDasharray="2 3"
             />
           ) : null}
@@ -483,12 +460,12 @@ function TrafficBySourceChart({
 
         {activeRow ? (
           <div
-            className="pointer-events-none absolute top-4 z-20 w-56 rounded-2xl border border-sky-300/15 bg-slate-950/95 px-4 py-3 text-xs text-slate-300 shadow-2xl"
+            className="pointer-events-none absolute top-4 z-20 w-56 rounded-2xl border border-borderSoft bg-white/95 px-4 py-3 text-xs text-muted shadow-2xl"
             style={{
               left: `clamp(1rem, calc(${(activeIndex ?? 0) / Math.max(pointCount - 1, 1)} * 100%), calc(100% - 15rem))`,
             }}
           >
-            <p className="font-semibold text-slate-100">
+            <p className="font-semibold text-ink">
               {formatTooltipDate(
                 String(trafficBySource[activeIndex ?? 0]?.date ?? activeRow.date),
               )}
@@ -506,7 +483,7 @@ function TrafficBySourceChart({
                     />
                     <span>{normalizeChannelLabel(channel)}</span>
                   </div>
-                  <span className="font-semibold text-slate-100">
+                  <span className="font-semibold text-ink">
                     {new Intl.NumberFormat("pt-BR").format(
                       Number(activeRow[channel] ?? 0),
                     )}{" "}
@@ -519,7 +496,7 @@ function TrafficBySourceChart({
         ) : null}
       </div>
 
-      <div className="flex justify-between px-2 text-xs text-slate-500">
+      <div className="flex justify-between px-2 text-xs text-muted">
         <span>{String(chartData[0]?.date ?? "--")}</span>
         <span>{String(chartData[Math.floor((chartData.length - 1) / 2)]?.date ?? "--")}</span>
         <span>{String(chartData[chartData.length - 1]?.date ?? "--")}</span>
@@ -585,7 +562,7 @@ export default function HomePage() {
 
         setOverview(null);
         setDashboardState("error");
-        setDashboardError(overviewResult.reason instanceof Error ? overviewResult.reason.message : "Nao foi possivel carregar o dashboard.");
+        setDashboardError(overviewResult.reason instanceof Error ? overviewResult.reason.message : "Não foi possível carregar o dashboard.");
       } catch {
         if (!active) {
           return;
@@ -616,18 +593,18 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen pb-8">
-      <nav className="sticky top-0 z-40 border-b border-sky-400/10 bg-slate-950/60 backdrop-blur-xl">
+      <nav className="sticky top-0 z-40 border-b border-borderSoft bg-cream/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between px-4 xl:px-6">
           <div className="flex items-center gap-8">
-            <span className="text-xl font-semibold tracking-tight text-sky-300">Glacier AI</span>
+            <span className="text-xl font-semibold tracking-tight text-ink">Glacier AI</span>
             <div className="hidden items-center gap-6 md:flex">
               {navItems.map((item) => (
                 <span
                   key={item.label}
                   className={`border-b-2 pb-1 text-sm font-medium transition-colors ${
                     item.active
-                      ? "border-sky-400 text-sky-200"
-                      : "border-transparent text-slate-400 hover:text-sky-100"
+                      ? "border-coral text-ink"
+                      : "border-transparent text-muted hover:text-ink"
                   }`}
                 >
                   {item.label}
@@ -642,13 +619,13 @@ export default function HomePage() {
                 <button
                   key={action}
                   type="button"
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[11px] font-semibold text-sky-200"
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-borderSoft bg-white/70 text-[11px] font-semibold text-ink"
                 >
                   {action}
                 </button>
               ))}
             </div>
-            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-gradient-to-br from-slate-700 to-slate-900 text-xs font-semibold text-slate-100">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-borderSoft bg-pistachio/30 text-xs font-semibold text-ink">
               RG
             </div>
           </div>
@@ -656,106 +633,89 @@ export default function HomePage() {
       </nav>
 
       <div className="relative mx-auto grid max-w-[1440px] gap-6 px-4 pt-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:px-6">
-        <div className="pointer-events-none absolute left-[18%] top-0 h-80 w-80 rounded-full bg-sky-400/12 blur-[120px]" />
-        <div className="pointer-events-none absolute bottom-24 right-[20%] h-72 w-72 rounded-full bg-violet-400/10 blur-[120px]" />
-
         <section className="relative z-10 space-y-6">
           <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-4xl font-semibold tracking-tight text-slate-50">
-                Visao Geral de Analytics
+              <h1 className="text-4xl font-semibold tracking-tight text-ink">
+                Visão Geral de Analytics
               </h1>
-              <p className="mt-2 text-sm text-slate-400">
-                Metricas de performance e insights gerados por IA.
+              <p className="mt-2 text-sm text-muted">
+                Métricas de performance e insights gerados por IA.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <FilterChip label="Periodo" value="Ultimos 30 dias" accent="primary" />
+              <FilterChip label="Período" value="Últimos 30 dias" accent="primary" />
               <FilterChip label="Canal" value="Todos os canais" accent="tertiary" />
               <FilterChip label="Status" value={statusText(dashboardState)} />
             </div>
           </header>
 
-          <div className="flex flex-wrap gap-3 text-xs text-slate-300">
-            <span
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 ${backendStatusTone[backendStatus]}`}
-            >
-              <span className="h-2 w-2 rounded-full bg-current" />
-              Backend {statusLabel(backendStatus)}
-            </span>
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-              Modo {cacheStatus?.data_source_mode ?? "cache indisponivel"}
-            </span>
-            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-slate-400">
-              Ultimo snapshot {formatDateTime(lastSnapshotAt)}
+          <div className="flex flex-wrap gap-3 text-xs text-ink">
+            <span className="inline-flex items-center gap-2 rounded-full border border-borderSoft bg-white/70 px-3 py-1.5 text-muted">
+              Último snapshot {formatDateTime(lastSnapshotAt)}
             </span>
           </div>
 
           {dashboardError ? (
-            <div className="rounded-[20px] border border-rose-400/20 bg-rose-400/10 px-5 py-4 text-sm text-rose-100">
+            <div className="rounded-[20px] border border-coral/35 bg-coral/15 px-5 py-4 text-sm text-ink">
               {dashboardError}
             </div>
           ) : null}
 
           <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-5">
             <KpiCard
-              label="Total de usuarios"
+              label="Total de usuários"
               value={formatCompactNumber(summary?.totalUsers ?? null)}
-              helper="GET /api/dashboard/overview -> summary.totalUsers"
-              accent="text-sky-300"
+              description="Usuários identificados no período"
+              accent="text-blueSoft"
             />
             <KpiCard
               label="Total de pedidos"
               value={formatCompactNumber(summary?.totalOrders ?? null)}
-              helper="GET /api/dashboard/overview -> summary.totalOrders"
-              accent="text-rose-300"
+              description="Pedidos realizados no período"
+              accent="text-coral"
             />
             <KpiCard
               label="Receita"
               value={formatCurrency(summary?.revenue ?? null)}
-              helper="GET /api/dashboard/overview -> summary.revenue"
-              accent="text-violet-300"
+              description="Receita gerada pelos pedidos"
+              accent="text-orange"
             />
             <KpiCard
-              label="Taxa de conversao"
+              label="Taxa de conversão"
               value={formatPercent(summary?.conversionRate ?? null)}
-              helper="GET /api/dashboard/overview -> summary.conversionRate"
-              accent="text-cyan-300"
+              description="Relação entre pedidos e usuários"
+              accent="text-pistachioDark"
             />
             <KpiCard
               label="Principal canal"
               value={summary ? normalizeChannelLabel(summary.topChannel) : "--"}
-              helper="GET /api/dashboard/overview -> summary.topChannel"
-              accent="text-slate-100"
+              description="Canal com melhor desempenho"
+              accent="text-ink"
             />
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.9fr)]">
             <div className="glass-panel rounded-[24px] p-6">
-              <div className="mb-6 flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-semibold text-slate-50">Trafego por origem</h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    GET /api/dashboard/overview -&gt; trafficBySource
-                  </p>
-                </div>
-                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-400">
-                  serie real
-                </span>
+              <div className="mb-6">
+                <h3 className="text-base font-semibold text-ink">Tráfego por origem</h3>
+                <p className="mt-1 text-sm text-muted">
+                  Série temporal do volume de visitas por canal
+                </p>
               </div>
 
               <TrafficBySourceChart trafficBySource={trafficBySource} />
             </div>
 
             <div className="glass-panel rounded-[24px] p-6">
-              <div className="mb-6 flex items-center justify-between">
-                <h3 className="text-base font-semibold text-slate-50">
-                  Taxa de conversao por canal
+              <div className="mb-6">
+                <h3 className="text-base font-semibold text-ink">
+                  Taxa de conversão por canal
                 </h3>
-                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] text-slate-400">
-                  contract
-                </span>
+                <p className="mt-1 text-sm text-muted">
+                  Percentual de usuários que converteram em pedido por canal
+                </p>
               </div>
 
               {conversionByChannel.length > 0 ? (
@@ -766,14 +726,14 @@ export default function HomePage() {
                     return (
                       <div key={item.channel} className="space-y-2">
                         <div className="flex items-center justify-between text-sm">
-                          <span className="text-slate-300">
+                          <span className="text-muted">
                             {normalizeChannelLabel(item.channel)}
                           </span>
-                          <span className="font-semibold text-slate-100">
+                          <span className="font-semibold text-ink">
                             {formatPercent(item.conversionRate)}
                           </span>
                         </div>
-                        <div className="h-3 overflow-hidden rounded-full bg-slate-800">
+                        <div className="h-3 overflow-hidden rounded-full bg-borderSoft/70">
                           <div
                             className="h-full rounded-full"
                             style={{
@@ -787,9 +747,9 @@ export default function HomePage() {
                   })}
                 </div>
               ) : (
-                <div className="rounded-[20px] border border-dashed border-white/10 bg-slate-950/45 p-5 text-sm text-slate-400">
-                  Nenhuma taxa por canal disponivel ainda. O frontend deve renderizar
-                  `conversionByChannel` quando o snapshot estiver pronto.
+                <div className="rounded-[20px] border border-dashed border-borderSoft bg-cream/55 p-5 text-sm text-muted">
+                  Nenhuma taxa por canal disponível ainda. O frontend deve renderizar
+                  dados quando o snapshot estiver pronto.
                 </div>
               )}
             </div>
@@ -797,10 +757,10 @@ export default function HomePage() {
 
           <section className="space-y-4">
             <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-300/12 text-xs font-semibold text-violet-200">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-pistachio/25 text-xs font-semibold text-ink">
                 IA
               </span>
-              <h3 className="text-lg font-semibold text-slate-50">Insights do dashboard</h3>
+              <h3 className="text-lg font-semibold text-ink">Insights do dashboard</h3>
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
@@ -810,54 +770,49 @@ export default function HomePage() {
                     key={`${insight.type}-${insight.title}`}
                     className={`glass-panel rounded-[20px] border-l-2 p-5 ${insightTone(insight.type)}`}
                   >
-                    <p className="text-sm font-semibold text-slate-50">{insight.title}</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-400">{insight.message}</p>
+                    <p className="text-sm font-semibold text-ink">{insight.title}</p>
+                    <p className="mt-2 text-sm leading-6 text-muted">{insight.message}</p>
                   </div>
                 ))
               ) : (
-                <div className="glass-panel rounded-[20px] p-5 text-sm text-slate-400 md:col-span-3">
-                  Nenhum insight disponivel ainda.
+                <div className="glass-panel rounded-[20px] p-5 text-sm text-muted md:col-span-3">
+                  Nenhum insight disponível ainda.
                 </div>
               )}
             </div>
           </section>
 
-          <section className="glass-panel rounded-[24px] p-6">
-            <div className="mb-6 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-slate-50">Contrato de dados</h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Cada bloco da tela agora aponta explicitamente para campo, endpoint e origem.
-                </p>
-              </div>
-              <span className="rounded-full border border-sky-400/20 bg-sky-400/10 px-3 py-1 text-xs text-sky-100">
-                painel de validacao
-              </span>
-            </div>
+          <section>
+            <details className="rounded-[24px] border border-borderSoft bg-white/70 p-6">
+              <summary className="cursor-pointer text-sm font-semibold text-ink">
+                Transparência dos dados (detalhes técnicos)
+              </summary>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {contractCards.map((card) => (
-                <div
-                  key={card.bloco}
-                  className="rounded-[20px] border border-white/10 bg-slate-950/45 p-5"
-                >
-                  <p className="text-sm font-semibold text-slate-50">{card.bloco}</p>
-                  <div className="mt-4 space-y-2 text-xs leading-5 text-slate-400">
-                    <p>Campo: {card.campo}</p>
-                    <p>Endpoint: {card.endpoint}</p>
-                    <p>Origem: {card.origem}</p>
-                    <p>Filtro: {card.filtro}</p>
+              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {contractCards.map((card) => (
+                  <div
+                    key={card.bloco}
+                    className="rounded-[20px] border border-borderSoft bg-cream/45 p-5"
+                  >
+                    <p className="text-sm font-semibold text-ink">{card.bloco}</p>
+                    <div className="mt-4 space-y-2 text-xs leading-5 text-muted">
+                      <p>Campo: {card.campo}</p>
+                      <p>Endpoint: {card.endpoint}</p>
+                      <p>Origem: {card.origem}</p>
+                      <p>Filtro: {card.filtro}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </details>
           </section>
         </section>
 
         <aside className="relative z-10 xl:sticky xl:top-[88px] xl:self-start">
-          <div className="glass-panel-elevated flex min-h-[720px] flex-col overflow-hidden rounded-[26px]">
+          <div className="glass-panel-elevated flex flex-col overflow-hidden rounded-[26px]">
             <CopilotPanel
               automaticMessages={copilotMessages}
+              backendStatus={backendStatus}
               isLoading={dashboardState === "loading"}
             />
           </div>
