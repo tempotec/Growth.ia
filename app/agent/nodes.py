@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Callable
 
+from app.agent.contextual_followup import resolve_contextual_followup
 from app.agent.state import AgentState
 from app.repositories.local_cache_repository import LocalCacheSnapshotNotFoundError
 from app.services.analytics_read_service import AnalyticsReadService
@@ -19,10 +20,13 @@ def parse_question(
 ) -> AgentState:
     """Parse the incoming question into structured agent state."""
 
-    service = llm_service or LLMService()
     question = state["question"]
     conversation_history = state.get("conversation_history", [])
+    contextual_followup = resolve_contextual_followup(question, conversation_history)
+    if contextual_followup is not None:
+        return contextual_followup
 
+    service = llm_service or LLMService()
     try:
         parsed_question = service.parse_question(
             question,
@@ -53,6 +57,9 @@ def parse_question(
 
 def route_to_tool(state: AgentState) -> AgentState:
     """Map a supported intent to a concrete tool invocation."""
+
+    if state.get("answer"):
+        return {"tool_name": None, "tool_args": {}}
 
     if state.get("intent") == "out_of_scope" or state.get("error"):
         return {"tool_name": None, "tool_args": {}}

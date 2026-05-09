@@ -14,6 +14,48 @@ from app.repositories.local_cache_repository import LocalCacheSnapshotNotFoundEr
 from app.schemas.analytics import ParsedQuestion
 
 
+def _comparison_history() -> list[dict]:
+    return [
+        {
+            "role": "assistant",
+            "content": "Comparei Search, Organic e Display.",
+            "analytics_context": {
+                "last_intent": "best_channel_performance",
+                "last_channel": None,
+                "last_compared_channels": ["Search", "Organic", "Display"],
+                "last_metric_context": "channel_performance_summary",
+                "last_period": {
+                    "start_date": "2026-04-10",
+                    "end_date": "2026-05-09",
+                },
+                "last_tool_result": {
+                    "Search": {
+                        "users": 2493,
+                        "converted_users": 1984,
+                        "orders": 3094,
+                        "revenue": 622593.8,
+                        "conversion_rate": 0.7958,
+                    },
+                    "Organic": {
+                        "users": 534,
+                        "converted_users": 420,
+                        "orders": 650,
+                        "revenue": 135000,
+                        "conversion_rate": 0.787,
+                    },
+                    "Display": {
+                        "users": 141,
+                        "converted_users": 115,
+                        "orders": 160,
+                        "revenue": 36000,
+                        "conversion_rate": 0.816,
+                    },
+                },
+            },
+        }
+    ]
+
+
 def test_parse_question_node_populates_state(valid_parsed_question_payload: dict) -> None:
     llm_service = Mock()
     llm_service.parse_question.return_value = ParsedQuestion(**valid_parsed_question_payload)
@@ -35,6 +77,103 @@ def test_parse_question_node_populates_state(valid_parsed_question_payload: dict
         "E em fevereiro?",
         conversation_history=history,
     )
+
+
+def test_parse_question_resolves_contextual_user_winner_without_llm() -> None:
+    llm_service = Mock()
+
+    result = parse_question(
+        {
+            "question": "Qual deles trouxe mais usuarios?",
+            "conversation_history": _comparison_history(),
+        },
+        llm_service=llm_service,
+    )
+
+    assert result["tool_name"] is None
+    assert result["intent"] == "traffic_volume_by_source"
+    assert result["mentioned_traffic_sources"] == ["Search", "Organic", "Display"]
+    assert "Search trouxe mais usuarios" in result["answer"]
+    assert "2.493" in result["answer"]
+    assert "Facebook" not in result["answer"]
+    llm_service.parse_question.assert_not_called()
+
+
+def test_parse_question_resolves_contextual_conversion_winner_without_llm() -> None:
+    llm_service = Mock()
+
+    result = parse_question(
+        {
+            "question": "Qual deles teve a maior taxa de conversao?",
+            "conversation_history": _comparison_history(),
+        },
+        llm_service=llm_service,
+    )
+
+    assert result["tool_name"] is None
+    assert result["intent"] == "best_channel_performance"
+    assert "Display teve a maior taxa de conversao" in result["answer"]
+    assert "81,60%" in result["answer"]
+    assert "Facebook" not in result["answer"]
+    llm_service.parse_question.assert_not_called()
+
+
+def test_parse_question_resolves_contextual_revenue_winner_without_llm() -> None:
+    llm_service = Mock()
+
+    result = parse_question(
+        {
+            "question": "Qual deles gerou mais receita?",
+            "conversation_history": _comparison_history(),
+        },
+        llm_service=llm_service,
+    )
+
+    assert result["tool_name"] is None
+    assert result["intent"] == "revenue_by_source"
+    assert "Search gerou mais receita" in result["answer"]
+    assert "R$ 622.593,80" in result["answer"]
+    assert "Facebook" not in result["answer"]
+    llm_service.parse_question.assert_not_called()
+
+
+def test_parse_question_resolves_contextual_metric_breakdown_without_llm() -> None:
+    llm_service = Mock()
+
+    result = parse_question(
+        {
+            "question": "Separe por volume, conversao e receita.",
+            "conversation_history": _comparison_history(),
+        },
+        llm_service=llm_service,
+    )
+
+    assert result["tool_name"] is None
+    assert result["intent"] == "recommendation"
+    assert "volume: Search lidera" in result["answer"]
+    assert "conversao: Display lidera" in result["answer"]
+    assert "receita: Search lidera" in result["answer"]
+    llm_service.parse_question.assert_not_called()
+
+
+def test_parse_question_resolves_contextual_priority_without_llm() -> None:
+    llm_service = Mock()
+
+    result = parse_question(
+        {
+            "question": "Entre eles, qual priorizar?",
+            "conversation_history": _comparison_history(),
+        },
+        llm_service=llm_service,
+    )
+
+    assert result["tool_name"] is None
+    assert result["intent"] == "recommendation"
+    assert "priorizaria Search" in result["answer"]
+    assert "maior receita" in result["answer"]
+    assert "maior volume" in result["answer"]
+    assert "Display" in result["answer"]
+    llm_service.parse_question.assert_not_called()
 
 
 def test_parse_question_node_returns_controlled_error_on_failure() -> None:
@@ -114,6 +253,18 @@ def test_route_to_tool_requests_clarification_when_source_specific_intent_lacks_
 
 def test_route_to_tool_skips_out_of_scope() -> None:
     result = route_to_tool({"intent": "out_of_scope"})
+
+    assert result["tool_name"] is None
+    assert result["tool_args"] == {}
+
+
+def test_route_to_tool_skips_already_resolved_contextual_answer() -> None:
+    result = route_to_tool(
+        {
+            "intent": "traffic_volume_by_source",
+            "answer": "Entre Search e Organic, Search trouxe mais usuarios.",
+        }
+    )
 
     assert result["tool_name"] is None
     assert result["tool_args"] == {}

@@ -25,3 +25,4 @@ class AgentState(TypedDict, total=False):
     answer: str | None
     error: str | None
     out_of_scope_reason: str | None
+    analytics_context: dict[str, Any] | None

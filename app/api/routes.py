@@ -246,12 +246,13 @@ def _serialize_conversation_history(payload: AskRequest) -> list[dict]:
 def _response_metadata(state: dict) -> dict:
     """Expose the last parse so the frontend can enrich future history."""
 
+    analytics_context = state.get("analytics_context") or _build_analytics_context(state)
     return {
         "intent": state.get("intent"),
         "traffic_source": state.get("traffic_source"),
         "mentioned_traffic_sources": state.get("mentioned_traffic_sources", []),
         "date_range": state.get("date_range"),
-        "analytics_context": _build_analytics_context(state),
+        "analytics_context": analytics_context,
     }
 
 
