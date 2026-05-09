@@ -50,6 +50,35 @@ def _comparison_history() -> list[dict]:
     ]
 
 
+def _performance_rows() -> list[dict]:
+    return [
+        {
+            "traffic_source": "Facebook",
+            "users": 214,
+            "converted_users": 182,
+            "orders": 297,
+            "revenue": 42300.0,
+            "conversion_rate": 0.8504,
+        },
+        {
+            "traffic_source": "Search",
+            "users": 2493,
+            "converted_users": 1984,
+            "orders": 3094,
+            "revenue": 622593.8,
+            "conversion_rate": 0.7958,
+        },
+        {
+            "traffic_source": "Display",
+            "users": 141,
+            "converted_users": 115,
+            "orders": 160,
+            "revenue": 36000.0,
+            "conversion_rate": 0.816,
+        },
+    ]
+
+
 def test_graph_skips_tool_execution_for_out_of_scope(valid_date_range_payload: dict[str, str]) -> None:
     llm_service = Mock()
     llm_service.parse_question.return_value = ParsedQuestion(
@@ -89,6 +118,96 @@ def test_graph_executes_tool_for_supported_intent(valid_parsed_question_payload:
     assert result["tool_result"]["users"] == 1234
     assert result["answer"] == "Search trouxe 1234 usuarios."
     tool.assert_called_once()
+
+
+def test_graph_answers_best_performance_with_multiple_criteria(
+    valid_date_range_payload: dict[str, str],
+) -> None:
+    llm_service = Mock()
+    llm_service.parse_question.return_value = ParsedQuestion(
+        intent="best_channel_performance",
+        traffic_source=None,
+        mentioned_traffic_sources=[],
+        date_range=valid_date_range_payload,
+        needs_data=True,
+        out_of_scope_reason=None,
+    )
+    tool = Mock(return_value=_performance_rows())
+    graph = build_agent_graph(
+        llm_service=llm_service,
+        tool_registry={"get_channel_performance_summary": tool},
+    )
+
+    result = graph.invoke(
+        {"question": "Qual canal teve a melhor performance no período analisado?"}
+    )
+
+    assert result["tool_name"] == "get_channel_performance_summary"
+    assert "Depende do critério" in result["answer"]
+    assert "Facebook lidera em conversão" in result["answer"]
+    assert "Search lidera em volume" in result["answer"]
+    assert "Search lidera em receita" in result["answer"]
+    assert "vencedor absoluto" in result["answer"]
+    tool.assert_called_once()
+    llm_service.generate_answer.assert_not_called()
+
+
+def test_graph_answers_best_performance_with_filtered_sources(
+    valid_date_range_payload: dict[str, str],
+) -> None:
+    llm_service = Mock()
+    llm_service.parse_question.return_value = ParsedQuestion(
+        intent="best_channel_performance",
+        traffic_source=None,
+        mentioned_traffic_sources=["Search", "Display"],
+        date_range=valid_date_range_payload,
+        needs_data=True,
+        out_of_scope_reason=None,
+    )
+    tool = Mock(return_value=_performance_rows())
+    graph = build_agent_graph(
+        llm_service=llm_service,
+        tool_registry={"get_channel_performance_summary": tool},
+    )
+
+    result = graph.invoke(
+        {"question": "Entre Search e Display, qual teve melhor performance?"}
+    )
+
+    assert "Display lidera em conversão" in result["answer"]
+    assert "Search lidera em volume" in result["answer"]
+    assert "Search lidera em receita" in result["answer"]
+    assert "Facebook" not in result["answer"]
+    llm_service.generate_answer.assert_not_called()
+
+
+def test_graph_answers_short_best_performance_with_two_sentences(
+    valid_date_range_payload: dict[str, str],
+) -> None:
+    llm_service = Mock()
+    llm_service.parse_question.return_value = ParsedQuestion(
+        intent="best_channel_performance",
+        traffic_source=None,
+        mentioned_traffic_sources=[],
+        date_range=valid_date_range_payload,
+        needs_data=True,
+        out_of_scope_reason=None,
+    )
+    tool = Mock(return_value=_performance_rows())
+    graph = build_agent_graph(
+        llm_service=llm_service,
+        tool_registry={"get_channel_performance_summary": tool},
+    )
+
+    result = graph.invoke(
+        {"question": "Qual canal teve a melhor performance? Resuma em uma frase."}
+    )
+
+    assert result["short_answer"] is True
+    assert result["answer"].count(".") <= 2
+    assert "Depende do critério" in result["answer"]
+    assert "impacto comercial total, Search" in result["answer"]
+    llm_service.generate_answer.assert_not_called()
 
 
 def test_graph_resolves_contextual_followup_without_tool_or_llm() -> None:

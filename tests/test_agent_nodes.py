@@ -411,26 +411,96 @@ def test_execute_tool_maps_missing_local_cache_snapshot_to_controlled_error() ->
 
 def test_generate_answer_node_uses_llm_service() -> None:
     llm_service = Mock()
-    llm_service.generate_answer.return_value = "Organic teve a melhor performance."
+    llm_service.generate_answer.return_value = "Search teve boa performance."
 
     result = generate_answer(
         {
-            "question": "Qual canal teve melhor performance?",
-            "intent": "best_channel_performance",
-            "tool_result": [{"traffic_source": "Organic"}],
+            "question": "Como foi Search?",
+            "intent": "channel_performance_by_source",
+            "tool_result": [{"traffic_source": "Search"}],
             "out_of_scope_reason": None,
         },
         llm_service=llm_service,
     )
 
-    assert result["answer"] == "Organic teve a melhor performance."
+    assert result["answer"] == "Search teve boa performance."
     llm_service.generate_answer.assert_called_once_with(
-        question="Qual canal teve melhor performance?",
-        intent="best_channel_performance",
-        tool_result=[{"traffic_source": "Organic"}],
+        question="Como foi Search?",
+        intent="channel_performance_by_source",
+        tool_result=[{"traffic_source": "Search"}],
         out_of_scope_reason=None,
         conversation_history=[],
     )
+
+
+def test_generate_answer_node_resolves_best_performance_without_llm() -> None:
+    llm_service = Mock()
+
+    result = generate_answer(
+        {
+            "question": "Qual canal teve a melhor performance?",
+            "intent": "best_channel_performance",
+            "tool_result": [
+                {
+                    "traffic_source": "Facebook",
+                    "users": 214,
+                    "converted_users": 182,
+                    "orders": 297,
+                    "revenue": 42300.0,
+                    "conversion_rate": 0.8504,
+                },
+                {
+                    "traffic_source": "Search",
+                    "users": 2493,
+                    "converted_users": 1984,
+                    "orders": 3094,
+                    "revenue": 622593.8,
+                    "conversion_rate": 0.7958,
+                },
+            ],
+            "out_of_scope_reason": None,
+        },
+        llm_service=llm_service,
+    )
+
+    assert "Depende do critério" in result["answer"]
+    assert "Facebook lidera em conversão" in result["answer"]
+    assert "Search lidera em volume" in result["answer"]
+    assert "Search lidera em receita" in result["answer"]
+    llm_service.generate_answer.assert_not_called()
+
+
+def test_generate_answer_node_respects_short_best_performance_mode() -> None:
+    llm_service = Mock()
+
+    result = generate_answer(
+        {
+            "question": "Qual canal teve a melhor performance? Resuma em uma frase.",
+            "intent": "best_channel_performance",
+            "tool_result": [
+                {
+                    "traffic_source": "Facebook",
+                    "users": 214,
+                    "revenue": 42300.0,
+                    "conversion_rate": 0.8504,
+                },
+                {
+                    "traffic_source": "Search",
+                    "users": 2493,
+                    "revenue": 622593.8,
+                    "conversion_rate": 0.7958,
+                },
+            ],
+            "short_answer": True,
+            "max_sentences": 2,
+        },
+        llm_service=llm_service,
+    )
+
+    assert result["answer"].count(".") <= 2
+    assert "Depende do critério" in result["answer"]
+    assert "impacto comercial total, Search" in result["answer"]
+    llm_service.generate_answer.assert_not_called()
 
 
 def test_generate_answer_node_passes_short_answer_guidance_to_llm() -> None:

@@ -62,6 +62,15 @@ MULTI_SOURCE_COMPARISON_TERMS = (
     "comparacao",
     "entre",
 )
+BEST_PERFORMANCE_PATTERNS = (
+    "melhor performance",
+    "performou melhor",
+    "melhor canal",
+    "canal foi melhor",
+    "canal teve melhor desempenho",
+    "melhor desempenho",
+    "melhor no periodo",
+)
 RECOMMENDATION_PATTERNS = (
     "recomendacao",
     "recomenda",
@@ -347,6 +356,13 @@ def _parse_high_confidence_question(
     if recommendation_parse is not None:
         return recommendation_parse
 
+    best_performance_parse = _parse_best_performance_question(
+        normalized_question,
+        conversation_history=conversation_history,
+    )
+    if best_performance_parse is not None:
+        return best_performance_parse
+
     if len(sources) != 1:
         return None
 
@@ -400,6 +416,34 @@ def _parse_explicit_multi_source_question(
         intent="best_channel_performance",
         traffic_source=None,
         mentioned_traffic_sources=sources,
+        date_range={
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+        needs_data=True,
+        out_of_scope_reason=None,
+    )
+
+
+def _parse_best_performance_question(
+    normalized_question: str,
+    *,
+    conversation_history: list[dict[str, Any]],
+) -> ParsedQuestion | None:
+    """Resolve explicit best-performance questions without relying on the LLM."""
+
+    if not any(pattern in normalized_question for pattern in BEST_PERFORMANCE_PATTERNS):
+        return None
+
+    start_date, end_date = _resolve_date_range(
+        normalized_question,
+        conversation_history=conversation_history,
+        reference_date=date.today(),
+    )
+    return ParsedQuestion(
+        intent="best_channel_performance",
+        traffic_source=None,
+        mentioned_traffic_sources=[],
         date_range={
             "start_date": start_date,
             "end_date": end_date,

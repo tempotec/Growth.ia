@@ -185,6 +185,28 @@ def test_parse_question_detects_multiple_sources_after_entre() -> None:
     client.chat.completions.create.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Qual canal teve a melhor performance?",
+        "Qual canal performou melhor?",
+        "Qual é o melhor canal?",
+        "Qual canal foi melhor no período?",
+        "Qual canal teve melhor desempenho?",
+    ],
+)
+def test_parse_question_detects_best_performance_questions(question: str) -> None:
+    client = Mock()
+    service = LLMService(client=client, model="test-model")
+
+    result = service.parse_question(question)
+
+    assert result.intent == "best_channel_performance"
+    assert result.traffic_source is None
+    assert result.mentioned_traffic_sources == []
+    client.chat.completions.create.assert_not_called()
+
+
 def test_parse_question_overrides_llm_payload_with_detected_multiple_sources() -> None:
     client = Mock()
     client.chat.completions.create.return_value = _build_chat_response(

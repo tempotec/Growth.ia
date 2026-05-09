@@ -6,6 +6,7 @@ from typing import Callable
 
 from app.agent.answer_style import detect_answer_style, limit_sentences
 from app.agent.contextual_followup import resolve_contextual_followup
+from app.agent.performance_answer import build_best_performance_answer
 from app.agent.scope_fallback import resolve_scope_fallback
 from app.agent.state import AgentState
 from app.repositories.local_cache_repository import LocalCacheSnapshotNotFoundError
@@ -174,6 +175,15 @@ def generate_answer(
     if state.get("answer"):
         answer = limit_sentences(state["answer"], state.get("max_sentences"))
         return {"answer": answer}
+
+    if state.get("intent") == "best_channel_performance":
+        performance_answer = build_best_performance_answer(
+            state.get("tool_result"),
+            short_answer=bool(state.get("short_answer")),
+        )
+        if performance_answer is not None:
+            answer = limit_sentences(performance_answer, state.get("max_sentences"))
+            return {"answer": answer}
 
     service = llm_service or LLMService()
     try:

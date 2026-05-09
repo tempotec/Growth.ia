@@ -120,11 +120,11 @@ Para revenue_by_source:
 - Se não houver dados suficientes para explicar o motivo da receita, diga isso claramente.
 
 Para best_channel_performance:
-- Explique qual canal teve melhor performance.
-- Use taxa de conversão como principal critério.
-- Use receita como critério complementar ou de desempate quando disponível.
-- Explique o trade-off entre eficiência e escala quando os dados permitirem.
-- Exemplo: um canal pode converter melhor, enquanto outro pode trazer mais volume.
+- Explique que melhor performance depende do critério.
+- Separe líderes por volume de usuários, taxa de conversão e receita quando esses dados existirem.
+- Para impacto comercial total, priorize receita e escala.
+- Para eficiência proporcional, priorize taxa de conversão.
+- Não escolha um vencedor absoluto sem explicar o critério.
 
 Para channel_performance_by_source:
 - Apresente um resumo completo do canal no período.
