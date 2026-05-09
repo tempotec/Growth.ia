@@ -97,8 +97,9 @@ Regras obrigatórias:
 - Se houver muitos dados, destaque apenas os 2 ou 3 mais importantes.
 - Quando interpretar uma expressão temporal relativa, como "mês anterior a abril", explicite a interpretação na resposta.
 - Use conversation_history apenas para entender referências da pergunta atual. Não invente dados a partir do histórico.
+- Se response_guidance.short_answer=true, responda em no máximo response_guidance.max_sentences frases, não use a estrutura obrigatória completa e não inclua bloco longo de próxima ação.
 
-Formato obrigatório da resposta:
+Formato obrigatório da resposta, exceto quando response_guidance.short_answer=true:
 1. Resposta direta
 2. Evidência nos dados
 3. Interpretação de negócio
@@ -205,8 +206,46 @@ def build_answer_user_prompt(
     tool_result: Any,
     out_of_scope_reason: str | None,
     conversation_history: list[dict[str, Any]] | None = None,
+    short_answer: bool = False,
+    max_sentences: int | None = None,
+    use_default_answer_structure: bool = True,
 ) -> str:
     """Build the final answer prompt payload."""
+
+    mandatory_structure = [
+        "Resposta direta",
+        "Evidência nos dados",
+        "Interpretação de negócio",
+        "Próxima ação recomendada",
+    ]
+    business_rules = [
+        "não responder em inglês",
+        "não inventar dados que a tool não retornou",
+        "não expor endpoints, SQL, JSON, nomes de campos ou detalhes internos",
+        "não prometer ROI sem custo de mídia",
+        "não chamar pedidos por usuário de taxa de conversão",
+        "tratar taxa de conversão como usuários convertidos / usuários totais",
+        "não fazer recomendações absolutas",
+        "responder em no máximo 2 a 4 parágrafos curtos",
+        "destacar apenas os 2 ou 3 dados mais importantes quando houver muitos dados",
+        "quando faltar contexto, sugerir a próxima análise possível",
+    ]
+    if short_answer:
+        max_sentences = max_sentences or 2
+        mandatory_structure = []
+        business_rules = [
+            rule
+            for rule in business_rules
+            if rule != "responder em no máximo 2 a 4 parágrafos curtos"
+            and rule != "quando faltar contexto, sugerir a próxima análise possível"
+        ]
+        business_rules.extend(
+            [
+                f"responder em no máximo {max_sentences} frases",
+                "não usar a estrutura obrigatória completa",
+                "não incluir bloco longo de próxima ação",
+            ]
+        )
 
     payload = {
         "question": question,
@@ -218,24 +257,11 @@ def build_answer_user_prompt(
         "response_guidance": {
             "language": "pt-BR",
             "tone": "claro, analítico, executivo e útil para gestão de mídia/growth",
-            "mandatory_structure": [
-                "Resposta direta",
-                "Evidência nos dados",
-                "Interpretação de negócio",
-                "Próxima ação recomendada",
-            ],
-            "business_rules": [
-                "não responder em inglês",
-                "não inventar dados que a tool não retornou",
-                "não expor endpoints, SQL, JSON, nomes de campos ou detalhes internos",
-                "não prometer ROI sem custo de mídia",
-                "não chamar pedidos por usuário de taxa de conversão",
-                "tratar taxa de conversão como usuários convertidos / usuários totais",
-                "não fazer recomendações absolutas",
-                "responder em no máximo 2 a 4 parágrafos curtos",
-                "destacar apenas os 2 ou 3 dados mais importantes quando houver muitos dados",
-                "quando faltar contexto, sugerir a próxima análise possível",
-            ],
+            "short_answer": short_answer,
+            "max_sentences": max_sentences,
+            "use_default_answer_structure": use_default_answer_structure,
+            "mandatory_structure": mandatory_structure,
+            "business_rules": business_rules,
         },
     }
     return json.dumps(payload, ensure_ascii=False, default=str)

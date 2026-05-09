@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Callable
 
+from app.agent.answer_style import detect_answer_style, limit_sentences
 from app.agent.contextual_followup import resolve_contextual_followup
 from app.agent.state import AgentState
 from app.repositories.local_cache_repository import LocalCacheSnapshotNotFoundError
@@ -22,9 +23,10 @@ def parse_question(
 
     question = state["question"]
     conversation_history = state.get("conversation_history", [])
+    answer_style = detect_answer_style(question)
     contextual_followup = resolve_contextual_followup(question, conversation_history)
     if contextual_followup is not None:
-        return contextual_followup
+        return {**contextual_followup, **answer_style}
 
     service = llm_service or LLMService()
     try:
@@ -41,6 +43,7 @@ def parse_question(
             "error": "Nao foi possivel interpretar a pergunta de forma confiavel.",
             "answer": "Nao foi possivel interpretar a pergunta de forma confiavel.",
             "out_of_scope_reason": "parse_failure",
+            **answer_style,
         }
 
     return {
@@ -52,6 +55,7 @@ def parse_question(
         "out_of_scope_reason": parsed_question.out_of_scope_reason,
         "error": None,
         "answer": None,
+        **answer_style,
     }
 
 
@@ -163,21 +167,35 @@ def generate_answer(
     """Generate the final answer unless a controlled answer already exists."""
 
     if state.get("answer"):
-        return {"answer": state["answer"]}
+        answer = limit_sentences(state["answer"], state.get("max_sentences"))
+        return {"answer": answer}
 
     service = llm_service or LLMService()
     try:
-        answer = service.generate_answer(
-            question=state["question"],
-            intent=state.get("intent"),
-            tool_result=state.get("tool_result"),
-            out_of_scope_reason=state.get("out_of_scope_reason"),
-            conversation_history=state.get("conversation_history", []),
-        )
+        answer_kwargs = {
+            "question": state["question"],
+            "intent": state.get("intent"),
+            "tool_result": state.get("tool_result"),
+            "out_of_scope_reason": state.get("out_of_scope_reason"),
+            "conversation_history": state.get("conversation_history", []),
+        }
+        if state.get("short_answer"):
+            answer_kwargs.update(
+                {
+                    "short_answer": True,
+                    "max_sentences": state.get("max_sentences"),
+                    "use_default_answer_structure": state.get(
+                        "use_default_answer_structure",
+                        False,
+                    ),
+                }
+            )
+        answer = service.generate_answer(**answer_kwargs)
     except LLMServiceError:
         answer = "Nao foi possivel gerar a resposta final no momento."
         return {"answer": answer, "error": answer}
 
+    answer = limit_sentences(answer, state.get("max_sentences"))
     return {"answer": answer}
 
 

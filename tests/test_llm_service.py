@@ -307,6 +307,29 @@ def test_answer_prompt_enforces_pt_br_and_business_guidance() -> None:
     assert "não inventar dados que a tool não retornou" in payload["response_guidance"]["business_rules"]
 
 
+def test_answer_prompt_supports_short_answer_mode() -> None:
+    payload = json.loads(
+        build_answer_user_prompt(
+            question="Me dê uma recomendação final em uma frase.",
+            intent="recommendation",
+            tool_result=[{"traffic_source": "Search", "users": 2493}],
+            out_of_scope_reason=None,
+            short_answer=True,
+            max_sentences=2,
+            use_default_answer_structure=False,
+        )
+    )
+
+    guidance = payload["response_guidance"]
+    assert "response_guidance.short_answer=true" in ANSWER_SYSTEM_PROMPT
+    assert guidance["short_answer"] is True
+    assert guidance["max_sentences"] == 2
+    assert guidance["use_default_answer_structure"] is False
+    assert guidance["mandatory_structure"] == []
+    assert "responder em no máximo 2 frases" in guidance["business_rules"]
+    assert "não incluir bloco longo de próxima ação" in guidance["business_rules"]
+
+
 def test_parse_prompt_uses_supported_out_of_scope_contract() -> None:
     assert "Regras de prioridade" in PARSE_SYSTEM_PROMPT
     assert "out_of_scope_reason=unsupported_intent" in PARSE_SYSTEM_PROMPT

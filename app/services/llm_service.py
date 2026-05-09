@@ -210,6 +210,9 @@ class LLMService:
         tool_result: Any = None,
         out_of_scope_reason: str | None = None,
         conversation_history: list[dict[str, Any]] | None = None,
+        short_answer: bool = False,
+        max_sentences: int | None = None,
+        use_default_answer_structure: bool = True,
     ) -> str:
         """Generate a final business-friendly answer."""
 
@@ -238,6 +241,9 @@ class LLMService:
                             tool_result=tool_result,
                             out_of_scope_reason=out_of_scope_reason,
                             conversation_history=recent_history,
+                            short_answer=short_answer,
+                            max_sentences=max_sentences,
+                            use_default_answer_structure=use_default_answer_structure,
                         ),
                     },
                 ],

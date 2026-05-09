@@ -26,3 +26,6 @@ class AgentState(TypedDict, total=False):
     error: str | None
     out_of_scope_reason: str | None
     analytics_context: dict[str, Any] | None
+    short_answer: bool
+    max_sentences: int | None
+    use_default_answer_structure: bool

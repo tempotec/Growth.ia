@@ -79,6 +79,25 @@ def test_parse_question_node_populates_state(valid_parsed_question_payload: dict
     )
 
 
+def test_parse_question_node_marks_short_answer_request(
+    valid_parsed_question_payload: dict,
+) -> None:
+    llm_service = Mock()
+    llm_service.parse_question.return_value = ParsedQuestion(**valid_parsed_question_payload)
+
+    result = parse_question(
+        {
+            "question": "Me dê uma conclusão curta e prática.",
+            "conversation_history": [],
+        },
+        llm_service=llm_service,
+    )
+
+    assert result["short_answer"] is True
+    assert result["max_sentences"] == 2
+    assert result["use_default_answer_structure"] is False
+
+
 def test_parse_question_resolves_contextual_user_winner_without_llm() -> None:
     llm_service = Mock()
 
@@ -364,6 +383,38 @@ def test_generate_answer_node_uses_llm_service() -> None:
     )
 
 
+def test_generate_answer_node_passes_short_answer_guidance_to_llm() -> None:
+    llm_service = Mock()
+    llm_service.generate_answer.return_value = (
+        "Priorize Search pela escala. Valide custo antes de investir. Ignore esta frase."
+    )
+
+    result = generate_answer(
+        {
+            "question": "Me dê uma recomendação final em uma frase.",
+            "intent": "recommendation",
+            "tool_result": [{"traffic_source": "Search"}],
+            "out_of_scope_reason": None,
+            "short_answer": True,
+            "max_sentences": 2,
+            "use_default_answer_structure": False,
+        },
+        llm_service=llm_service,
+    )
+
+    assert result["answer"] == "Priorize Search pela escala. Valide custo antes de investir."
+    llm_service.generate_answer.assert_called_once_with(
+        question="Me dê uma recomendação final em uma frase.",
+        intent="recommendation",
+        tool_result=[{"traffic_source": "Search"}],
+        out_of_scope_reason=None,
+        conversation_history=[],
+        short_answer=True,
+        max_sentences=2,
+        use_default_answer_structure=False,
+    )
+
+
 def test_generate_answer_node_preserves_existing_answer() -> None:
     llm_service = Mock()
 
@@ -375,4 +426,20 @@ def test_generate_answer_node_preserves_existing_answer() -> None:
     )
 
     assert result["answer"] == "Pergunta fora do escopo atual da V1."
+    llm_service.generate_answer.assert_not_called()
+
+
+def test_generate_answer_node_limits_existing_short_deterministic_answer() -> None:
+    llm_service = Mock()
+
+    result = generate_answer(
+        {
+            "answer": "Search lidera em receita. Display lidera em conversão. Terceira frase.",
+            "short_answer": True,
+            "max_sentences": 2,
+        },
+        llm_service=llm_service,
+    )
+
+    assert result["answer"] == "Search lidera em receita. Display lidera em conversão."
     llm_service.generate_answer.assert_not_called()
