@@ -6,6 +6,7 @@ import sqlite3
 from datetime import date, datetime
 from typing import Any, get_args
 
+from app.core.analytics_metrics import derive_revenue_by_source
 from app.schemas.analytics import AllowedTrafficSource
 from app.services.sqlite_service import SQLiteService
 
@@ -250,34 +251,14 @@ class LocalCacheRepository:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> list[dict[str, Any]]:
-        """Return the most recent cached revenue by source snapshot."""
+        """Return cached revenue projected from channel performance."""
 
-        rows = self._fetch_latest_rows(
-            """
-            SELECT
-                snapshot_at,
-                start_date,
-                end_date,
-                traffic_source,
-                revenue
-            FROM revenue_by_source_snapshot
-            WHERE snapshot_at = (
-                SELECT MAX(snapshot_at)
-                FROM revenue_by_source_snapshot
+        return derive_revenue_by_source(
+            self.get_channel_performance_summary(
+                start_date=start_date,
+                end_date=end_date,
             )
-            ORDER BY revenue DESC, traffic_source ASC
-            """
         )
-        self._ensure_matching_date_range(rows, start_date, end_date)
-        return [
-            {
-                "traffic_source": row["traffic_source"],
-                "revenue": float(row["revenue"]),
-                "start_date": row["start_date"],
-                "end_date": row["end_date"],
-            }
-            for row in rows
-        ]
 
     def get_users_by_source(
         self,

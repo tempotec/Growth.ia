@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 from typing import get_args
 
+from app.core.analytics_metrics import derive_revenue_by_source
 from app.core.cache_config import DataSourceMode, get_cache_settings
 from app.repositories.analytics_repository import AnalyticsRepository
 from app.repositories.local_cache_repository import LocalCacheRepository
@@ -49,12 +50,13 @@ class AnalyticsReadService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> list[dict]:
-        """Return revenue aggregated by traffic source for a period."""
+        """Return revenue projected from canonical channel performance metrics."""
 
-        repository = self._get_active_repository()
-        return repository.get_revenue_by_source(
-            start_date=start_date,
-            end_date=end_date,
+        return derive_revenue_by_source(
+            self.get_channel_performance_summary(
+                start_date=start_date,
+                end_date=end_date,
+            )
         )
 
     def get_channel_performance_summary(

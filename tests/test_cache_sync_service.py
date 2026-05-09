@@ -23,14 +23,6 @@ def test_cache_sync_service_materializes_all_supported_views() -> None:
             "end_date": "2026-05-05",
         }
     ]
-    analytics_repository.get_revenue_by_source.return_value = [
-        {
-            "traffic_source": "Organic",
-            "revenue": 5500.0,
-            "start_date": "2026-04-06",
-            "end_date": "2026-05-05",
-        }
-    ]
     analytics_repository.get_users_by_source.side_effect = [
         {
             "traffic_source": traffic_source,
@@ -51,12 +43,20 @@ def test_cache_sync_service_materializes_all_supported_views() -> None:
     result = service.sync_all(snapshot_at=snapshot_at)
 
     analytics_repository.get_channel_performance_summary.assert_called_once_with()
-    analytics_repository.get_revenue_by_source.assert_called_once_with()
+    analytics_repository.get_revenue_by_source.assert_not_called()
     assert analytics_repository.get_users_by_source.call_count == len(
         ALLOWED_TRAFFIC_SOURCES
     )
     local_cache_repository.write_channel_performance_snapshot.assert_called_once()
     local_cache_repository.write_revenue_by_source_snapshot.assert_called_once()
+    assert local_cache_repository.write_revenue_by_source_snapshot.call_args.args[0] == [
+        {
+            "traffic_source": "Organic",
+            "revenue": 5500.0,
+            "start_date": "2026-04-06",
+            "end_date": "2026-05-05",
+        }
+    ]
     local_cache_repository.write_users_by_source_snapshot.assert_called_once()
     local_cache_repository.record_sync_run.assert_called_once()
     assert result == {
@@ -70,7 +70,6 @@ def test_cache_sync_service_materializes_all_supported_views() -> None:
 def test_cache_sync_service_queries_users_snapshot_for_every_allowed_source() -> None:
     analytics_repository = Mock()
     analytics_repository.get_channel_performance_summary.return_value = []
-    analytics_repository.get_revenue_by_source.return_value = []
     analytics_repository.get_users_by_source.side_effect = [
         {
             "traffic_source": traffic_source,

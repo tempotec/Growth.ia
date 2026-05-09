@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+from app.core.analytics_metrics import derive_revenue_by_source
 from app.core.logging import get_logger, log_event
 from app.repositories.analytics_repository import (
     ALLOWED_TRAFFIC_SOURCES,
@@ -39,7 +40,7 @@ class CacheSyncService:
 
         try:
             channel_performance = self._analytics_repository.get_channel_performance_summary()
-            revenue_by_source = self._analytics_repository.get_revenue_by_source()
+            revenue_by_source = derive_revenue_by_source(channel_performance)
             users_by_source = [
                 self._analytics_repository.get_users_by_source(traffic_source)
                 for traffic_source in ALLOWED_TRAFFIC_SOURCES

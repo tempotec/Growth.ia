@@ -13,10 +13,14 @@ from app.services.analytics_read_service import AnalyticsReadService
 
 def test_analytics_read_service_uses_bigquery_direct_mode() -> None:
     bigquery_repository = Mock()
-    bigquery_repository.get_revenue_by_source.return_value = [
+    bigquery_repository.get_channel_performance_summary.return_value = [
         {
             "traffic_source": "Organic",
+            "users": 1000,
+            "converted_users": 80,
+            "orders": 90,
             "revenue": 5500.0,
+            "conversion_rate": 0.08,
             "start_date": "2026-04-06",
             "end_date": "2026-05-05",
         }
@@ -35,7 +39,11 @@ def test_analytics_read_service_uses_bigquery_direct_mode() -> None:
     )
 
     assert result[0]["traffic_source"] == "Organic"
-    bigquery_repository.get_revenue_by_source.assert_called_once()
+    bigquery_repository.get_channel_performance_summary.assert_called_once_with(
+        start_date=date(2026, 4, 6),
+        end_date=date(2026, 5, 5),
+    )
+    bigquery_repository.get_revenue_by_source.assert_not_called()
     local_cache_repository.get_revenue_by_source.assert_not_called()
 
 

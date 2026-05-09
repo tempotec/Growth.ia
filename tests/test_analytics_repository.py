@@ -92,8 +92,22 @@ def test_get_revenue_by_source_returns_aggregated_payloads(
     mock_bigquery_service: Mock,
 ) -> None:
     mock_bigquery_service.run_query.return_value = [
-        {"traffic_source": "Organic", "revenue": 12345.67},
-        {"traffic_source": "Search", "revenue": 9876.54},
+        {
+            "traffic_source": "Organic",
+            "users": 1000,
+            "converted_users": 80,
+            "orders": 90,
+            "revenue": 12345.67,
+            "conversion_rate": 0.08,
+        },
+        {
+            "traffic_source": "Search",
+            "users": 900,
+            "converted_users": 70,
+            "orders": 80,
+            "revenue": 9876.54,
+            "conversion_rate": 0.0778,
+        },
     ]
 
     result = analytics_repository.get_revenue_by_source(
@@ -117,26 +131,87 @@ def test_get_revenue_by_source_returns_aggregated_payloads(
     ]
 
 
-def test_get_revenue_by_source_passes_allowed_traffic_sources_to_query(
+def test_get_revenue_by_source_derives_from_channel_performance_summary(
     analytics_repository: AnalyticsRepository,
     mock_bigquery_service: Mock,
 ) -> None:
-    mock_bigquery_service.run_query.return_value = []
+    summary_rows = [
+        {
+            "traffic_source": "Search",
+            "users": 900,
+            "converted_users": 70,
+            "orders": 80,
+            "revenue": 9876.54,
+            "conversion_rate": 0.0778,
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+        }
+    ]
 
-    analytics_repository.get_revenue_by_source(
+    with patch.object(
+        analytics_repository,
+        "get_channel_performance_summary",
+        return_value=summary_rows,
+    ) as get_channel_performance_summary:
+        result = analytics_repository.get_revenue_by_source(
+            start_date=date(2026, 4, 1),
+            end_date=date(2026, 4, 30),
+        )
+
+    assert result == [
+        {
+            "traffic_source": "Search",
+            "revenue": 9876.54,
+            "start_date": "2026-04-01",
+            "end_date": "2026-04-30",
+        }
+    ]
+    get_channel_performance_summary.assert_called_once_with(
+        start_date=date(2026, 4, 1),
+        end_date=date(2026, 4, 30),
+    )
+    mock_bigquery_service.run_query.assert_not_called()
+
+
+def test_revenue_by_source_matches_channel_performance_revenue(
+    analytics_repository: AnalyticsRepository,
+    mock_bigquery_service: Mock,
+) -> None:
+    performance_rows = [
+        {
+            "traffic_source": "Search",
+            "users": 900,
+            "converted_users": 70,
+            "orders": 80,
+            "revenue": 9876.54,
+            "conversion_rate": 0.0778,
+        },
+        {
+            "traffic_source": "Organic",
+            "users": 1000,
+            "converted_users": 80,
+            "orders": 90,
+            "revenue": 12345.67,
+            "conversion_rate": 0.08,
+        },
+    ]
+    mock_bigquery_service.run_query.side_effect = [performance_rows, performance_rows]
+
+    channel_performance = analytics_repository.get_channel_performance_summary(
+        start_date=date(2026, 4, 1),
+        end_date=date(2026, 4, 30),
+    )
+    revenue_by_source = analytics_repository.get_revenue_by_source(
         start_date=date(2026, 4, 1),
         end_date=date(2026, 4, 30),
     )
 
-    query, parameters = mock_bigquery_service.run_query.call_args.args
-
-    assert "order_revenue AS" in query
-    assert "ORDER BY revenue DESC" in query
-    assert f"FROM `{ORDER_ITEMS_TABLE}`" in query
-    assert f"FROM `{ORDERS_TABLE}` AS o" in query
-    assert f"INNER JOIN `{USERS_TABLE}` AS u" in query
-    assert parameters[0].name == "traffic_sources"
-    assert parameters[0].values == list(ALLOWED_TRAFFIC_SOURCES)
+    performance_revenue = {
+        row["traffic_source"]: row["revenue"] for row in channel_performance
+    }
+    revenue_revenue = {row["traffic_source"]: row["revenue"] for row in revenue_by_source}
+    assert performance_revenue["Search"] == revenue_revenue["Search"]
+    assert performance_revenue == revenue_revenue
 
 
 def test_get_channel_performance_summary_returns_structured_rows(
@@ -187,12 +262,15 @@ def test_get_channel_performance_summary_query_uses_safe_aggregations(
     query, parameters = mock_bigquery_service.run_query.call_args.args
 
     assert f"FROM `{USERS_TABLE}`" in query
-    assert f"LEFT JOIN `{ORDERS_TABLE}` AS o" in query
+    assert f"INNER JOIN `{ORDERS_TABLE}` AS o" in query
     assert f"FROM `{ORDER_ITEMS_TABLE}`" in query
     assert "users_base AS" in query
-    assert "COUNT(DISTINCT CASE" in query
+    assert "users_agg AS" in query
+    assert "converted_users_agg AS" in query
+    assert "orders_base AS" in query
+    assert "order_agg AS" in query
     assert "converted_users" in query
-    assert "COUNT(DISTINCT o.order_id) AS orders" in query
+    assert "COUNT(DISTINCT ob.order_id) AS orders" in query
     assert "WITH source_dim AS" in query
     assert "order_revenue AS" in query
     assert "SAFE_DIVIDE" in query

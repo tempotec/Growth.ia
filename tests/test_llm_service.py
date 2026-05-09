@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import Mock, patch
 
 import pytest
@@ -163,8 +163,10 @@ def test_parse_question_resolves_recommendation_from_recent_channel_context() ->
 
     assert result.intent == "recommendation"
     assert result.traffic_source == "Display"
-    assert result.date_range.start_date.isoformat() == "2026-04-09"
-    assert result.date_range.end_date.isoformat() == "2026-05-08"
+    expected_end_date = date.today()
+    expected_start_date = expected_end_date - timedelta(days=29)
+    assert result.date_range.start_date == expected_start_date
+    assert result.date_range.end_date == expected_end_date
     client.chat.completions.create.assert_not_called()
 
 

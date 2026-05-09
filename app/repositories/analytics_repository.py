@@ -7,6 +7,7 @@ from typing import get_args
 
 from google.cloud import bigquery
 
+from app.core.analytics_metrics import derive_revenue_by_source
 from app.core.bigquery_tables import ORDER_ITEMS_TABLE, ORDERS_TABLE, USERS_TABLE
 from app.schemas.analytics import AllowedTrafficSource
 from app.services.bigquery_service import BigQueryService
@@ -73,49 +74,14 @@ class AnalyticsRepository:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> list[dict]:
-        """Return revenue aggregated by traffic source for a period."""
+        """Return revenue by traffic source from canonical performance metrics."""
 
-        resolved_start_date, resolved_end_date = self._resolve_date_range(
-            start_date, end_date
-        )
-        query = f"""
-            WITH order_revenue AS (
-              SELECT
-                order_id,
-                SUM(sale_price) AS revenue
-              FROM `{ORDER_ITEMS_TABLE}`
-              GROUP BY order_id
+        return derive_revenue_by_source(
+            self.get_channel_performance_summary(
+                start_date=start_date,
+                end_date=end_date,
             )
-            SELECT
-              u.traffic_source AS traffic_source,
-              ROUND(SUM(orv.revenue), 2) AS revenue
-            FROM `{ORDERS_TABLE}` AS o
-            INNER JOIN `{USERS_TABLE}` AS u
-              ON u.id = o.user_id
-            INNER JOIN order_revenue AS orv
-              ON orv.order_id = o.order_id
-            WHERE u.traffic_source IN UNNEST(@traffic_sources)
-              AND DATE(o.created_at) BETWEEN @start_date AND @end_date
-            GROUP BY u.traffic_source
-            ORDER BY revenue DESC
-        """
-        parameters = [
-            bigquery.ArrayQueryParameter(
-                "traffic_sources", "STRING", list(ALLOWED_TRAFFIC_SOURCES)
-            ),
-            bigquery.ScalarQueryParameter("start_date", "DATE", resolved_start_date),
-            bigquery.ScalarQueryParameter("end_date", "DATE", resolved_end_date),
-        ]
-        rows = self._bigquery_service.run_query(query, parameters)
-        return [
-            {
-                "traffic_source": row["traffic_source"],
-                "revenue": float(row["revenue"] or 0),
-                "start_date": resolved_start_date.isoformat(),
-                "end_date": resolved_end_date.isoformat(),
-            }
-            for row in rows
-        ]
+        )
 
     def get_channel_performance_summary(
         self,
@@ -147,36 +113,60 @@ class AnalyticsRepository:
               FROM `{ORDER_ITEMS_TABLE}`
               GROUP BY order_id
             ),
-            performance_agg AS (
+            users_agg AS (
+              SELECT
+                traffic_source,
+                COUNT(DISTINCT id) AS users
+              FROM users_base
+              GROUP BY traffic_source
+            ),
+            converted_users_agg AS (
               SELECT
                 ub.traffic_source AS traffic_source,
-                COUNT(DISTINCT ub.id) AS users,
-                COUNT(DISTINCT CASE
-                  WHEN o.order_id IS NOT NULL THEN ub.id
-                END) AS converted_users,
-                COUNT(DISTINCT o.order_id) AS orders,
-                ROUND(COALESCE(SUM(orv.revenue), 0), 2) AS revenue
+                COUNT(DISTINCT ub.id) AS converted_users
               FROM users_base AS ub
-              LEFT JOIN `{ORDERS_TABLE}` AS o
+              INNER JOIN `{ORDERS_TABLE}` AS o
                 ON o.user_id = ub.id
                 AND DATE(o.created_at) BETWEEN @start_date AND @end_date
-              LEFT JOIN order_revenue AS orv
-                ON orv.order_id = o.order_id
               GROUP BY ub.traffic_source
+            ),
+            orders_base AS (
+              SELECT
+                u.traffic_source AS traffic_source,
+                o.order_id AS order_id
+              FROM `{ORDERS_TABLE}` AS o
+              INNER JOIN `{USERS_TABLE}` AS u
+                ON u.id = o.user_id
+              WHERE u.traffic_source IN UNNEST(@traffic_sources)
+                AND DATE(o.created_at) BETWEEN @start_date AND @end_date
+            ),
+            order_agg AS (
+              SELECT
+                ob.traffic_source AS traffic_source,
+                COUNT(DISTINCT ob.order_id) AS orders,
+                ROUND(COALESCE(SUM(orv.revenue), 0), 2) AS revenue
+              FROM orders_base AS ob
+              LEFT JOIN order_revenue AS orv
+                ON orv.order_id = ob.order_id
+              GROUP BY ob.traffic_source
             )
             SELECT
               sd.traffic_source AS traffic_source,
-              COALESCE(pa.users, 0) AS users,
-              COALESCE(pa.converted_users, 0) AS converted_users,
-              COALESCE(pa.orders, 0) AS orders,
-              COALESCE(pa.revenue, 0) AS revenue,
+              COALESCE(ua.users, 0) AS users,
+              COALESCE(cua.converted_users, 0) AS converted_users,
+              COALESCE(oa.orders, 0) AS orders,
+              COALESCE(oa.revenue, 0) AS revenue,
               SAFE_DIVIDE(
-                COALESCE(pa.converted_users, 0),
-                NULLIF(COALESCE(pa.users, 0), 0)
+                COALESCE(cua.converted_users, 0),
+                NULLIF(COALESCE(ua.users, 0), 0)
               ) AS conversion_rate
             FROM source_dim AS sd
-            LEFT JOIN performance_agg AS pa
-              ON pa.traffic_source = sd.traffic_source
+            LEFT JOIN users_agg AS ua
+              ON ua.traffic_source = sd.traffic_source
+            LEFT JOIN converted_users_agg AS cua
+              ON cua.traffic_source = sd.traffic_source
+            LEFT JOIN order_agg AS oa
+              ON oa.traffic_source = sd.traffic_source
             ORDER BY conversion_rate DESC, revenue DESC
         """
         parameters = [

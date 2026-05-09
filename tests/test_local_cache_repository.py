@@ -269,6 +269,49 @@ def test_local_cache_repository_returns_contract_compatible_payloads(
     ]
 
 
+def test_local_cache_revenue_by_source_uses_channel_performance_snapshot(
+    sqlite_service: SQLiteService,
+) -> None:
+    repository = LocalCacheRepository(sqlite_service=sqlite_service)
+    snapshot_at = datetime(2026, 5, 5, 13, 0, 0)
+
+    repository.write_channel_performance_snapshot(
+        [
+            {
+                "start_date": "2026-04-06",
+                "end_date": "2026-05-05",
+                "traffic_source": "Search",
+                "users": 1000,
+                "converted_users": 80,
+                "orders": 90,
+                "revenue": 5500.0,
+                "conversion_rate": 0.08,
+            }
+        ],
+        snapshot_at,
+    )
+    repository.write_revenue_by_source_snapshot(
+        [
+            {
+                "start_date": "2026-04-06",
+                "end_date": "2026-05-05",
+                "traffic_source": "Search",
+                "revenue": 9999.0,
+            }
+        ],
+        snapshot_at,
+    )
+
+    assert repository.get_revenue_by_source() == [
+        {
+            "traffic_source": "Search",
+            "revenue": 5500.0,
+            "start_date": "2026-04-06",
+            "end_date": "2026-05-05",
+        }
+    ]
+
+
 def test_local_cache_repository_raises_when_snapshot_is_missing(
     sqlite_service: SQLiteService,
 ) -> None:
@@ -285,13 +328,17 @@ def test_local_cache_repository_raises_for_missing_requested_date_range(
 ) -> None:
     repository = LocalCacheRepository(sqlite_service=sqlite_service)
     snapshot_at = datetime(2026, 5, 5, 13, 0, 0)
-    repository.write_revenue_by_source_snapshot(
+    repository.write_channel_performance_snapshot(
         [
             {
                 "start_date": "2026-04-06",
                 "end_date": "2026-05-05",
                 "traffic_source": "Organic",
+                "users": 1000,
+                "converted_users": 80,
+                "orders": 90,
                 "revenue": 5500.0,
+                "conversion_rate": 0.08,
             }
         ],
         snapshot_at,
