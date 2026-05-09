@@ -15,6 +15,7 @@ class ConversationMessage(BaseModel):
     content: str = Field(..., min_length=1, description="Message text.")
     intent: SupportedIntent | None = None
     traffic_source: AllowedTrafficSource | None = None
+    mentioned_traffic_sources: list[AllowedTrafficSource] = Field(default_factory=list)
     date_range: DateRange | None = None
 
 
@@ -37,6 +38,7 @@ class AskResponse(BaseModel):
     error: str | None = None
     intent: SupportedIntent | None = None
     traffic_source: AllowedTrafficSource | None = None
+    mentioned_traffic_sources: list[AllowedTrafficSource] = Field(default_factory=list)
     date_range: DateRange | None = None
 
 

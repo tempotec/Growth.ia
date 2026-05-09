@@ -233,6 +233,7 @@ def _response_metadata(state: dict) -> dict:
     return {
         "intent": state.get("intent"),
         "traffic_source": state.get("traffic_source"),
+        "mentioned_traffic_sources": state.get("mentioned_traffic_sources", []),
         "date_range": state.get("date_range"),
     }
 

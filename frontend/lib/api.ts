@@ -25,6 +25,7 @@ const MOCK_RESPONSE: AskResponse = {
   error: null,
   intent: "best_channel_performance",
   traffic_source: null,
+  mentioned_traffic_sources: [],
   date_range: {
     start_date: "2026-04-08",
     end_date: "2026-05-07",

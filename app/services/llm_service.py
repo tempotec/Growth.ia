@@ -56,6 +56,12 @@ PERFORMANCE_CONTEXT_INTENTS = {
     "recommendation",
 }
 CONTEXT_DATE_TERMS = ("nesse periodo", "neste periodo", "no mesmo periodo", "nesse mes")
+MULTI_SOURCE_COMPARISON_TERMS = (
+    "compare",
+    "comparar",
+    "comparacao",
+    "entre",
+)
 RECOMMENDATION_PATTERNS = (
     "recomendacao",
     "recomenda",
@@ -172,6 +178,10 @@ class LLMService:
             content = self._extract_content(response)
             payload = json.loads(content)
             parsed_question = ParsedQuestion.model_validate(payload)
+            parsed_question = _apply_detected_traffic_sources(
+                parsed_question,
+                question,
+            )
             log_event(
                 self._logger,
                 logging.INFO,
@@ -315,6 +325,14 @@ def _parse_high_confidence_question(
 
     normalized_question = _normalize_text(question)
     sources = _find_traffic_sources(normalized_question)
+    multi_source_parse = _parse_explicit_multi_source_question(
+        normalized_question,
+        sources=sources,
+        conversation_history=conversation_history,
+    )
+    if multi_source_parse is not None:
+        return multi_source_parse
+
     recommendation_parse = _parse_recommendation_question(
         normalized_question,
         sources=sources,
@@ -344,6 +362,38 @@ def _parse_high_confidence_question(
     return ParsedQuestion(
         intent="channel_performance_by_source",
         traffic_source=sources[0],
+        mentioned_traffic_sources=[],
+        date_range={
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+        needs_data=True,
+        out_of_scope_reason=None,
+    )
+
+
+def _parse_explicit_multi_source_question(
+    normalized_question: str,
+    *,
+    sources: list[str],
+    conversation_history: list[dict[str, Any]],
+) -> ParsedQuestion | None:
+    """Resolve explicit multi-channel comparisons without relying on the LLM."""
+
+    if len(sources) <= 1:
+        return None
+    if not any(term in normalized_question for term in MULTI_SOURCE_COMPARISON_TERMS):
+        return None
+
+    start_date, end_date = _resolve_date_range(
+        normalized_question,
+        conversation_history=conversation_history,
+        reference_date=date.today(),
+    )
+    return ParsedQuestion(
+        intent="best_channel_performance",
+        traffic_source=None,
+        mentioned_traffic_sources=sources,
         date_range={
             "start_date": start_date,
             "end_date": end_date,
@@ -376,6 +426,7 @@ def _parse_recommendation_question(
     return ParsedQuestion(
         intent="recommendation",
         traffic_source=traffic_source,
+        mentioned_traffic_sources=sources if len(sources) > 1 else [],
         date_range={
             "start_date": start_date,
             "end_date": end_date,
@@ -415,11 +466,35 @@ def _normalize_text(value: str) -> str:
 def _find_traffic_sources(normalized_question: str) -> list[str]:
     """Return supported traffic sources explicitly mentioned in the question."""
 
-    sources: list[str] = []
+    source_matches: list[tuple[int, str]] = []
     for source in ALLOWED_TRAFFIC_SOURCES:
-        if re.search(rf"\b{re.escape(source.lower())}\b", normalized_question):
-            sources.append(source)
-    return sources
+        match = re.search(rf"\b{re.escape(source.lower())}\b", normalized_question)
+        if match:
+            source_matches.append((match.start(), source))
+    return [source for _, source in sorted(source_matches)]
+
+
+def _apply_detected_traffic_sources(
+    parsed_question: ParsedQuestion,
+    question: str,
+) -> ParsedQuestion:
+    """Keep parser output aligned with explicitly mentioned channels."""
+
+    sources = _find_traffic_sources(_normalize_text(question))
+    if len(sources) <= 1:
+        return parsed_question
+
+    intent = parsed_question.intent
+    if intent == "channel_performance_by_source":
+        intent = "best_channel_performance"
+
+    return parsed_question.model_copy(
+        update={
+            "intent": intent,
+            "traffic_source": None,
+            "mentioned_traffic_sources": sources,
+        }
+    )
 
 
 def _looks_like_short_channel_followup(normalized_question: str) -> bool:

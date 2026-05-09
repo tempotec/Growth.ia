@@ -102,6 +102,7 @@ export function CopilotPanel({
             toolUsed: response.error === OUT_OF_SCOPE_ERROR ? null : response.used_tool,
             intent: response.intent,
             traffic_source: response.traffic_source,
+            mentioned_traffic_sources: response.mentioned_traffic_sources,
             date_range: response.date_range,
             status: "done",
           },
@@ -294,6 +295,9 @@ function buildConversationHistory(messages: ChatMessage[]): ConversationMessage[
       }
       if (message.traffic_source) {
         historyMessage.traffic_source = message.traffic_source;
+      }
+      if (message.mentioned_traffic_sources?.length) {
+        historyMessage.mentioned_traffic_sources = message.mentioned_traffic_sources;
       }
       if (message.date_range) {
         historyMessage.date_range = message.date_range;

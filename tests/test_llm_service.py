@@ -140,6 +140,55 @@ def test_parse_question_prioritizes_channel_performance_for_source_data_month() 
     client.chat.completions.create.assert_not_called()
 
 
+def test_parse_question_detects_multiple_sources_for_explicit_comparison() -> None:
+    client = Mock()
+    service = LLMService(client=client, model="test-model")
+
+    result = service.parse_question("Compare Facebook e Search")
+
+    assert result.intent == "best_channel_performance"
+    assert result.traffic_source is None
+    assert result.mentioned_traffic_sources == ["Facebook", "Search"]
+    client.chat.completions.create.assert_not_called()
+
+
+def test_parse_question_detects_multiple_sources_after_entre() -> None:
+    client = Mock()
+    service = LLMService(client=client, model="test-model")
+
+    result = service.parse_question("Entre Search, Organic e Display, compare os canais")
+
+    assert result.intent == "best_channel_performance"
+    assert result.traffic_source is None
+    assert result.mentioned_traffic_sources == ["Search", "Organic", "Display"]
+    client.chat.completions.create.assert_not_called()
+
+
+def test_parse_question_overrides_llm_payload_with_detected_multiple_sources() -> None:
+    client = Mock()
+    client.chat.completions.create.return_value = _build_chat_response(
+        json.dumps(
+            {
+                "intent": "channel_performance_by_source",
+                "traffic_source": "Search",
+                "date_range": {
+                    "start_date": "2026-04-01",
+                    "end_date": "2026-04-30",
+                },
+                "needs_data": True,
+                "out_of_scope_reason": None,
+            }
+        )
+    )
+    service = LLMService(client=client, model="test-model")
+
+    result = service.parse_question("Dados de Search e Organic")
+
+    assert result.intent == "best_channel_performance"
+    assert result.traffic_source is None
+    assert result.mentioned_traffic_sources == ["Search", "Organic"]
+
+
 def test_parse_question_resolves_recommendation_from_recent_channel_context() -> None:
     client = Mock()
     service = LLMService(client=client, model="test-model")
@@ -242,6 +291,7 @@ def test_parse_prompt_uses_supported_out_of_scope_contract() -> None:
     assert "out_of_scope_reason=unsupported_intent" in PARSE_SYSTEM_PROMPT
     assert "channel_performance_by_source" in PARSE_SYSTEM_PROMPT
     assert "recommendation" in PARSE_SYSTEM_PROMPT
+    assert "mentioned_traffic_sources" in PARSE_SYSTEM_PROMPT
     assert "dados" in PARSE_SYSTEM_PROMPT
     assert "e o Facebook" in PARSE_SYSTEM_PROMPT
     assert "março" in PARSE_SYSTEM_PROMPT
@@ -265,6 +315,7 @@ def test_build_parse_prompt_limits_recent_history() -> None:
 
     assert len(payload["conversation_history"]) == 10
     assert payload["conversation_history"][0]["content"] == "Pergunta 2"
+    assert "mentioned_traffic_sources" in payload["output_contract"]
 
 
 def test_generate_answer_raises_controlled_error_when_completion_fails() -> None:

@@ -29,6 +29,7 @@ def test_parse_question_node_populates_state(valid_parsed_question_payload: dict
 
     assert result["intent"] == "traffic_volume_by_source"
     assert result["traffic_source"] == "Search"
+    assert result["mentioned_traffic_sources"] == []
     assert result["error"] is None
     llm_service.parse_question.assert_called_once_with(
         "E em fevereiro?",
@@ -131,6 +132,30 @@ def test_execute_tool_calls_selected_tool() -> None:
 
     assert result["tool_result"] == {"users": 10}
     tool.assert_called_once_with(traffic_source="Search")
+
+
+def test_execute_tool_filters_list_result_to_explicitly_mentioned_sources() -> None:
+    tool = Mock(
+        return_value=[
+            {"traffic_source": "Facebook", "users": 200},
+            {"traffic_source": "Search", "users": 1000},
+            {"traffic_source": "Organic", "users": 500},
+        ]
+    )
+
+    result = execute_tool(
+        {
+            "tool_name": "get_channel_performance_summary",
+            "tool_args": {},
+            "mentioned_traffic_sources": ["Search", "Organic"],
+        },
+        tool_registry={"get_channel_performance_summary": tool},
+    )
+
+    assert result["tool_result"] == [
+        {"traffic_source": "Search", "users": 1000},
+        {"traffic_source": "Organic", "users": 500},
+    ]
 
 
 def test_execute_tool_returns_controlled_error_on_failure() -> None:

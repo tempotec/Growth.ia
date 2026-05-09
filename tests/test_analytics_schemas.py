@@ -36,7 +36,24 @@ def test_parsed_question_accepts_supported_intent(
 
     assert parsed.intent == "traffic_volume_by_source"
     assert parsed.traffic_source == "Search"
+    assert parsed.mentioned_traffic_sources == []
     assert parsed.needs_data is True
+
+
+def test_parsed_question_accepts_multiple_mentioned_sources(
+    valid_date_range_payload: dict[str, str],
+) -> None:
+    parsed = ParsedQuestion(
+        intent="best_channel_performance",
+        traffic_source=None,
+        mentioned_traffic_sources=["Search", "Organic", "Display"],
+        date_range=valid_date_range_payload,
+        needs_data=True,
+        out_of_scope_reason=None,
+    )
+
+    assert parsed.traffic_source is None
+    assert parsed.mentioned_traffic_sources == ["Search", "Organic", "Display"]
 
 
 def test_parsed_question_accepts_out_of_scope_and_forces_needs_data_false(

@@ -18,6 +18,7 @@ export type ConversationMessage = {
   content: string;
   intent?: SupportedIntent | null;
   traffic_source?: string | null;
+  mentioned_traffic_sources?: string[];
   date_range?: ConversationDateRange | null;
 };
 
@@ -33,6 +34,7 @@ export type AskResponse = {
   error: string | null;
   intent: SupportedIntent | null;
   traffic_source: string | null;
+  mentioned_traffic_sources: string[];
   date_range: ConversationDateRange | null;
 };
 
@@ -101,6 +103,7 @@ export type ChatMessage = {
   toolUsed?: string | null;
   intent?: SupportedIntent | null;
   traffic_source?: string | null;
+  mentioned_traffic_sources?: string[];
   date_range?: ConversationDateRange | null;
   status?: "sending" | "done" | "error";
 };

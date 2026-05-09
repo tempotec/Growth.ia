@@ -30,6 +30,7 @@ def test_ask_request_accepts_conversation_history() -> None:
                 "content": "Search teve 2478 usuarios nos ultimos 30 dias.",
                 "intent": "traffic_volume_by_source",
                 "traffic_source": "Search",
+                "mentioned_traffic_sources": ["Search"],
                 "date_range": {
                     "start_date": "2026-04-08",
                     "end_date": "2026-05-07",
@@ -40,6 +41,7 @@ def test_ask_request_accepts_conversation_history() -> None:
 
     assert len(request.conversation_history) == 1
     assert request.conversation_history[0].traffic_source == "Search"
+    assert request.conversation_history[0].mentioned_traffic_sources == ["Search"]
 
 
 def test_conversation_message_rejects_system_role() -> None:
@@ -77,6 +79,7 @@ def test_ask_response_accepts_parse_metadata() -> None:
         error=None,
         intent="traffic_volume_by_source",
         traffic_source="Search",
+        mentioned_traffic_sources=["Search", "Organic"],
         date_range={
             "start_date": "2026-02-01",
             "end_date": "2026-03-31",
@@ -85,4 +88,5 @@ def test_ask_response_accepts_parse_metadata() -> None:
 
     assert response.intent == "traffic_volume_by_source"
     assert response.traffic_source == "Search"
+    assert response.mentioned_traffic_sources == ["Search", "Organic"]
     assert response.date_range is not None

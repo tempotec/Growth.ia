@@ -43,6 +43,7 @@ def parse_question(
         "parsed_question": parsed_question,
         "intent": parsed_question.intent,
         "traffic_source": parsed_question.traffic_source,
+        "mentioned_traffic_sources": parsed_question.mentioned_traffic_sources,
         "date_range": parsed_question.date_range,
         "out_of_scope_reason": parsed_question.out_of_scope_reason,
         "error": None,
@@ -141,7 +142,11 @@ def execute_tool(
             "answer": message,
         }
 
-    return {"tool_result": tool_result, "error": None}
+    filtered_tool_result = _filter_tool_result_to_mentioned_sources(
+        tool_result,
+        state.get("mentioned_traffic_sources", []),
+    )
+    return {"tool_result": filtered_tool_result, "error": None}
 
 
 def generate_answer(
@@ -173,3 +178,20 @@ def should_execute_tool(state: AgentState) -> str:
     """Decide whether the workflow should execute a data tool."""
 
     return "execute_tool" if state.get("tool_name") else "generate_answer"
+
+
+def _filter_tool_result_to_mentioned_sources(
+    tool_result: object,
+    mentioned_traffic_sources: list[str],
+) -> object:
+    """Limit list results to channels explicitly mentioned by the user."""
+
+    if len(mentioned_traffic_sources) <= 1 or not isinstance(tool_result, list):
+        return tool_result
+
+    allowed_sources = set(mentioned_traffic_sources)
+    return [
+        row
+        for row in tool_result
+        if isinstance(row, dict) and row.get("traffic_source") in allowed_sources
+    ]

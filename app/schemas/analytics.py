@@ -46,6 +46,7 @@ class ParsedQuestion(BaseModel):
 
     intent: SupportedIntent
     traffic_source: AllowedTrafficSource | None = None
+    mentioned_traffic_sources: list[AllowedTrafficSource] = Field(default_factory=list)
     date_range: DateRange
     needs_data: bool = True
     out_of_scope_reason: str | None = None

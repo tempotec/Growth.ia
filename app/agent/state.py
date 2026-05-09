@@ -17,6 +17,7 @@ class AgentState(TypedDict, total=False):
     parsed_question: ParsedQuestion | None
     intent: SupportedIntent | None
     traffic_source: str | None
+    mentioned_traffic_sources: list[str]
     date_range: DateRange | None
     tool_name: str | None
     tool_args: dict[str, Any]

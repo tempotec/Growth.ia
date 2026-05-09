@@ -27,6 +27,7 @@ Regras de prioridade:
 - Responda a classificação sempre no contrato JSON solicitado.
 - Se a pergunta pedir "dados", "números", "resultado", "resumo" ou "performance" de uma origem específica, use channel_performance_by_source.
 - Se a pergunta for uma continuação curta com uma origem específica, como "e Facebook?", "e o Facebook?", "e Email nesse período?", "e Search nesse período?" ou "e esse canal?", e o histórico recente estiver falando de performance, baixo desempenho, melhor canal, comparação entre canais, conversão ou receita, use channel_performance_by_source.
+- Quando a pergunta mencionar duas ou mais origens permitidas, preencha mentioned_traffic_sources com todas elas na ordem mencionada e deixe traffic_source=null.
 - Use traffic_volume_by_source apenas quando o usuário pedir explicitamente volume, tráfego ou usuários.
 - Use revenue_by_source apenas quando o usuário pedir explicitamente receita, faturamento ou dinheiro gerado.
 - Use best_channel_performance quando o usuário pedir ranking geral, melhor canal, pior canal, baixo desempenho ou comparação geral entre canais.
@@ -183,6 +184,9 @@ def build_parse_user_prompt(
                 "Search | Organic | Facebook | Email | Direct | Display | "
                 "Referral | null"
             ),
+            "mentioned_traffic_sources": [
+                "Search | Organic | Facebook | Email | Direct | Display | Referral"
+            ],
             "date_range": {
                 "start_date": "YYYY-MM-DD",
                 "end_date": "YYYY-MM-DD",
@@ -260,7 +264,12 @@ def _normalize_conversation_history(
             "role": role,
             "content": content.strip()[:1200],
         }
-        for key in ("intent", "traffic_source", "date_range"):
+        for key in (
+            "intent",
+            "traffic_source",
+            "mentioned_traffic_sources",
+            "date_range",
+        ):
             value = raw_message.get(key)
             if value is not None:
                 compact_message[key] = value
