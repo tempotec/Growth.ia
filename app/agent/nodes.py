@@ -6,6 +6,7 @@ from typing import Callable
 
 from app.agent.answer_style import detect_answer_style, limit_sentences
 from app.agent.contextual_followup import resolve_contextual_followup
+from app.agent.scope_fallback import resolve_scope_fallback
 from app.agent.state import AgentState
 from app.repositories.local_cache_repository import LocalCacheSnapshotNotFoundError
 from app.services.analytics_read_service import AnalyticsReadService
@@ -24,6 +25,10 @@ def parse_question(
     question = state["question"]
     conversation_history = state.get("conversation_history", [])
     answer_style = detect_answer_style(question)
+    scope_fallback = resolve_scope_fallback(question, conversation_history)
+    if scope_fallback is not None:
+        return {**scope_fallback, **answer_style}
+
     contextual_followup = resolve_contextual_followup(question, conversation_history)
     if contextual_followup is not None:
         return {**contextual_followup, **answer_style}

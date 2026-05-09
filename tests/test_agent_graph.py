@@ -116,3 +116,27 @@ def test_graph_resolves_contextual_followup_without_tool_or_llm() -> None:
     tool.assert_not_called()
     llm_service.parse_question.assert_not_called()
     llm_service.generate_answer.assert_not_called()
+
+
+def test_graph_limits_short_campaign_fallback_without_tool_or_llm() -> None:
+    llm_service = Mock()
+    tool = Mock()
+    graph = build_agent_graph(
+        llm_service=llm_service,
+        tool_registry={"get_channel_performance_summary": tool},
+    )
+
+    result = graph.invoke(
+        {
+            "question": "Em uma frase, qual campanha teve o melhor criativo?",
+            "conversation_history": [],
+        }
+    )
+
+    assert result["tool_name"] is None
+    assert result["short_answer"] is True
+    assert result["answer"].count(".") <= 2
+    assert "Não tenho dados de campanha ou criativo" in result["answer"]
+    tool.assert_not_called()
+    llm_service.parse_question.assert_not_called()
+    llm_service.generate_answer.assert_not_called()

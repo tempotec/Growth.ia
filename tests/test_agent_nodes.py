@@ -56,6 +56,18 @@ def _comparison_history() -> list[dict]:
     ]
 
 
+def _campaign_history() -> list[dict]:
+    return [
+        {
+            "role": "assistant",
+            "content": (
+                "Não tenho dados de campanha ou criativo no dataset atual. "
+                "A análise mais próxima é comparar canais de tráfego."
+            ),
+        }
+    ]
+
+
 def test_parse_question_node_populates_state(valid_parsed_question_payload: dict) -> None:
     llm_service = Mock()
     llm_service.parse_question.return_value = ParsedQuestion(**valid_parsed_question_payload)
@@ -96,6 +108,44 @@ def test_parse_question_node_marks_short_answer_request(
     assert result["short_answer"] is True
     assert result["max_sentences"] == 2
     assert result["use_default_answer_structure"] is False
+
+
+def test_parse_question_resolves_campaign_creative_fallback_without_llm() -> None:
+    llm_service = Mock()
+
+    result = parse_question(
+        {
+            "question": "Qual campanha teve o melhor criativo?",
+            "conversation_history": [],
+        },
+        llm_service=llm_service,
+    )
+
+    assert result["intent"] == "out_of_scope"
+    assert result["out_of_scope_reason"] == "dataset_gap"
+    assert result["tool_name"] is None
+    assert "Não tenho dados de campanha ou criativo" in result["answer"]
+    assert "comparar canais de tráfego" in result["answer"]
+    llm_service.parse_question.assert_not_called()
+
+
+def test_parse_question_resolves_current_dataset_alternative_without_llm() -> None:
+    llm_service = Mock()
+
+    result = parse_question(
+        {
+            "question": "Com o dataset atual, qual análise parecida você consegue fazer?",
+            "conversation_history": _campaign_history(),
+        },
+        llm_service=llm_service,
+    )
+
+    assert result["intent"] == "out_of_scope"
+    assert result["out_of_scope_reason"] == "dataset_gap"
+    assert result["tool_name"] is None
+    assert "Com o dataset atual" in result["answer"]
+    assert "usuários convertidos" in result["answer"]
+    llm_service.parse_question.assert_not_called()
 
 
 def test_parse_question_resolves_contextual_user_winner_without_llm() -> None:

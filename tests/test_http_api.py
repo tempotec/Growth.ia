@@ -170,6 +170,51 @@ def test_post_ask_returns_out_of_scope_response(monkeypatch) -> None:
     assert "The current" not in response.json()["answer"]
 
 
+def test_post_ask_returns_useful_campaign_creative_fallback() -> None:
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.post(
+        "/ask",
+        json={"question": "Qual campanha teve o melhor criativo?"},
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["used_tool"] is None
+    assert payload["error"] is None
+    assert "Não tenho dados de campanha ou criativo" in payload["answer"]
+    assert "impressões" in payload["answer"]
+    assert "comparar canais de tráfego" in payload["answer"]
+    assert "Essa pergunta está fora do escopo" not in payload["answer"]
+
+
+def test_post_ask_returns_current_dataset_alternative_without_clarification() -> None:
+    app = create_app()
+    client = TestClient(app)
+
+    response = client.post(
+        "/ask",
+        json={
+            "question": "Com o dataset atual, qual análise parecida você consegue fazer?",
+            "conversation_history": [
+                {
+                    "role": "assistant",
+                    "content": "Não tenho dados de campanha ou criativo no dataset atual.",
+                }
+            ],
+        },
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["used_tool"] is None
+    assert payload["error"] is None
+    assert "Com o dataset atual" in payload["answer"]
+    assert "usuários convertidos" in payload["answer"]
+    assert "Qual você prefere" not in payload["answer"]
+
+
 def test_post_ask_handles_simple_greeting_without_agent(monkeypatch) -> None:
     app = create_app()
     client = TestClient(app)
