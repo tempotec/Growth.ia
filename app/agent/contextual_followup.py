@@ -11,6 +11,8 @@ VOLUME_TERMS = ("usuario", "usuarios", "trafego", "volume")
 CONVERSION_TERMS = ("conversao", "converter", "converteu", "taxa de conversao")
 REVENUE_TERMS = ("receita", "faturamento", "dinheiro")
 PRIORITY_TERMS = ("priorizar", "prioridade", "investir")
+FOCUS_TERMS = ("focar", "foco", "priorizar", "prioridade", "investir")
+RATIONALE_TERMS = ("por que", "porque", "motivo", "razao", "justificativa")
 CONTEXT_REFERENCE_TERMS = (
     "qual deles",
     "entre eles",
@@ -53,6 +55,23 @@ def resolve_contextual_followup(
 
     if _looks_like_priority_followup(normalized_question):
         answer = _build_priority_answer(channels, rows)
+        if answer is None:
+            return None
+        return _build_resolved_state(
+            analytics_context=analytics_context,
+            channels=channels,
+            intent="recommendation",
+            answer=answer,
+        )
+
+    if _looks_like_focus_rationale_followup(normalized_question):
+        channel = _question_channel(normalized_question, channels)
+        if channel is None:
+            channel = _context_primary_channel(analytics_context, channels, rows)
+        if channel is None:
+            return None
+
+        answer = _build_focus_rationale_answer(channel, channels, rows)
         if answer is None:
             return None
         return _build_resolved_state(
@@ -180,6 +199,15 @@ def _looks_like_priority_followup(normalized_question: str) -> bool:
     )
 
 
+def _looks_like_focus_rationale_followup(normalized_question: str) -> bool:
+    """Detect why-focus follow-ups for a channel in the current context."""
+
+    asks_about_focus = any(term in normalized_question for term in FOCUS_TERMS)
+    asks_for_reason = any(term in normalized_question for term in RATIONALE_TERMS)
+    asks_beyond_performance = "alem do desempenho" in normalized_question
+    return asks_about_focus and (asks_for_reason or asks_beyond_performance)
+
+
 def _has_context_reference(normalized_question: str) -> bool:
     """Detect pronouns that must reuse the previous compared channel group."""
 
@@ -223,12 +251,12 @@ def _build_metric_winner_answer(
     group = _format_channel_group(channels)
     if metric == "users":
         return (
-            f"Entre {group}, {channel} trouxe mais usuarios, "
-            f"com {_format_integer(value)} usuarios."
+            f"Entre {group}, {channel} trouxe mais usuários, "
+            f"com {_format_integer(value)} usuários."
         )
     if metric == "conversion_rate":
         return (
-            f"Entre {group}, {channel} teve a maior taxa de conversao, "
+            f"Entre {group}, {channel} teve a maior taxa de conversão, "
             f"com {_format_percentage(value)}."
         )
     if metric == "revenue":
@@ -255,11 +283,11 @@ def _build_metric_breakdown_answer(
     parts = []
     if volume is not None:
         parts.append(
-            f"volume: {volume[0]} lidera com {_format_integer(volume[1])} usuarios"
+            f"volume: {volume[0]} lidera com {_format_integer(volume[1])} usuários"
         )
     if conversion is not None:
         parts.append(
-            f"conversao: {conversion[0]} lidera com {_format_percentage(conversion[1])}"
+            f"conversão: {conversion[0]} lidera com {_format_percentage(conversion[1])}"
         )
     if revenue is not None:
         parts.append(
@@ -287,9 +315,9 @@ def _build_priority_answer(
     if revenue is not None and revenue[0] == channel:
         reasons.append(f"maior receita ({_format_currency(revenue[1])})")
     if volume is not None and volume[0] == channel:
-        reasons.append(f"maior volume ({_format_integer(volume[1])} usuarios)")
+        reasons.append(f"maior volume ({_format_integer(volume[1])} usuários)")
     if conversion is not None and conversion[0] == channel:
-        reasons.append(f"maior conversao ({_format_percentage(conversion[1])})")
+        reasons.append(f"maior conversão ({_format_percentage(conversion[1])})")
 
     reason_text = " e ".join(reasons) if reasons else "melhor sinal no contexto"
     answer = (
@@ -298,10 +326,94 @@ def _build_priority_answer(
     )
     if conversion is not None and conversion[0] != channel:
         answer += (
-            f" Para eficiencia proporcional, {conversion[0]} merece acompanhamento "
-            f"porque lidera em conversao com {_format_percentage(conversion[1])}."
+            f" Para eficiência proporcional, {conversion[0]} merece acompanhamento "
+            f"porque lidera em conversão com {_format_percentage(conversion[1])}."
         )
     return answer
+
+
+def _build_focus_rationale_answer(
+    channel: str,
+    channels: list[str],
+    rows: dict[str, dict[str, float]],
+) -> str | None:
+    """Explain why a channel merits focus beyond raw metric leadership."""
+
+    if channel not in rows:
+        return None
+
+    role = _channel_strategic_role(channel)
+    strengths = _channel_strengths(channel, channels, rows)
+    test_focus = _channel_test_focus(channel)
+    strength_text = (
+        ", ".join(strengths[:-1]) + f" e {strengths[-1]}"
+        if len(strengths) > 1
+        else strengths[0]
+    )
+    return (
+        f"Focar em {channel} faz sentido além do desempenho bruto porque, "
+        f"como hipótese de mídia, {role}. "
+        f"No recorte analisado, essa hipótese ganha peso porque {channel} "
+        f"{strength_text}; por isso, uma melhoria nele tende a afetar uma parte "
+        f"grande do resultado. "
+        f"A próxima ação é validar essa hipótese com custo, CPA/CAC ou ROAS e "
+        f"testar melhorias em {test_focus} antes de aumentar investimento."
+    )
+
+
+def _channel_strengths(
+    channel: str,
+    channels: list[str],
+    rows: dict[str, dict[str, float]],
+) -> list[str]:
+    """Return compact data-backed strengths for a channel."""
+
+    strengths = []
+    volume = _metric_winner(channels, rows, "users")
+    revenue = _metric_winner(channels, rows, "revenue")
+    orders = _metric_winner(channels, rows, "orders")
+    conversion = _metric_winner(channels, rows, "conversion_rate")
+
+    if volume is not None and volume[0] == channel:
+        strengths.append("concentra a maior escala")
+    if revenue is not None and revenue[0] == channel:
+        strengths.append("lidera em receita")
+    if orders is not None and orders[0] == channel:
+        strengths.append("lidera em pedidos")
+    if conversion is not None and conversion[0] == channel:
+        strengths.append("tem a melhor eficiência proporcional")
+
+    return strengths or ["tem sinal relevante no contexto analisado"]
+
+
+def _channel_strategic_role(channel: str) -> str:
+    """Describe a prudent, non-guaranteed strategic role for common channels."""
+
+    roles = {
+        "Search": "esse canal tende a capturar demanda ativa de quem já está buscando uma solução ou produto",
+        "Organic": "esse canal tende a indicar demanda não paga e força de conteúdo ou SEO",
+        "Display": "esse canal tende a atuar mais em alcance, descoberta e reforço de consideração",
+        "Facebook": "esse canal tende a combinar descoberta, segmentação de públicos e estímulo de demanda",
+        "Email": "esse canal tende a ativar uma base própria com menor dependência de aquisição nova",
+        "Direct": "esse canal tende a refletir lembrança de marca, retorno direto e demanda já conhecida",
+        "Referral": "esse canal tende a refletir parcerias, recomendações ou tráfego de terceiros qualificados",
+    }
+    return roles.get(channel, "esse canal tende a cumprir um papel específico na jornada de aquisição")
+
+
+def _channel_test_focus(channel: str) -> str:
+    """Return practical optimization areas by channel."""
+
+    tests = {
+        "Search": "termos, landing pages e jornada",
+        "Organic": "conteúdo, SEO técnico e páginas de entrada",
+        "Display": "segmentação, criativos e frequência",
+        "Facebook": "segmentação, criativos e públicos",
+        "Email": "listas, oferta e cadência",
+        "Direct": "experiência de retorno e consistência da marca",
+        "Referral": "parcerias, mensagens e páginas de destino",
+    }
+    return tests.get(channel, "segmentação, oferta e jornada")
 
 
 def _metric_winner(
@@ -319,6 +431,35 @@ def _metric_winner(
     if not values:
         return None
     return max(values, key=lambda item: item[1])
+
+
+def _question_channel(normalized_question: str, channels: list[str]) -> str | None:
+    """Return the channel explicitly mentioned in the current question."""
+
+    for channel in channels:
+        normalized_channel = _normalize_text(channel)
+        if re.search(rf"\b{re.escape(normalized_channel)}\b", normalized_question):
+            return channel
+    return None
+
+
+def _context_primary_channel(
+    analytics_context: dict[str, Any],
+    channels: list[str],
+    rows: dict[str, dict[str, float]],
+) -> str | None:
+    """Choose the most likely focus channel from context when none is named."""
+
+    last_channel = analytics_context.get("last_channel")
+    if isinstance(last_channel, str) and last_channel in rows:
+        return last_channel
+
+    primary = (
+        _metric_winner(channels, rows, "revenue")
+        or _metric_winner(channels, rows, "users")
+        or _metric_winner(channels, rows, "conversion_rate")
+    )
+    return primary[0] if primary is not None else None
 
 
 def _format_channel_group(channels: list[str]) -> str:

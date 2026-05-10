@@ -33,3 +33,16 @@ def test_limit_sentences_keeps_only_requested_number_of_sentences() -> None:
     answer = "Primeira frase. Segunda frase. Terceira frase."
 
     assert limit_sentences(answer, 2) == "Primeira frase. Segunda frase."
+
+
+def test_limit_sentences_preserves_formatted_currency_and_numbers() -> None:
+    answer = (
+        "Priorize Search, pois gerou R$ 645.108,46 com boa conversão. "
+        "Valide custo e retorno."
+    )
+
+    assert limit_sentences(answer, 2) == answer
+    assert "R$ 645.108,46" in limit_sentences(answer, 2)
+    assert limit_sentences(answer, 1) == (
+        "Priorize Search, pois gerou R$ 645.108,46 com boa conversão."
+    )

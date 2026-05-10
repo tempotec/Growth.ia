@@ -162,7 +162,7 @@ def test_parse_question_resolves_contextual_user_winner_without_llm() -> None:
     assert result["tool_name"] is None
     assert result["intent"] == "traffic_volume_by_source"
     assert result["mentioned_traffic_sources"] == ["Search", "Organic", "Display"]
-    assert "Search trouxe mais usuarios" in result["answer"]
+    assert "Search trouxe mais usuários" in result["answer"]
     assert "2.493" in result["answer"]
     assert "Facebook" not in result["answer"]
     llm_service.parse_question.assert_not_called()
@@ -181,7 +181,7 @@ def test_parse_question_resolves_contextual_conversion_winner_without_llm() -> N
 
     assert result["tool_name"] is None
     assert result["intent"] == "best_channel_performance"
-    assert "Display teve a maior taxa de conversao" in result["answer"]
+    assert "Display teve a maior taxa de conversão" in result["answer"]
     assert "81,60%" in result["answer"]
     assert "Facebook" not in result["answer"]
     llm_service.parse_question.assert_not_called()
@@ -220,7 +220,7 @@ def test_parse_question_resolves_contextual_metric_breakdown_without_llm() -> No
     assert result["tool_name"] is None
     assert result["intent"] == "recommendation"
     assert "volume: Search lidera" in result["answer"]
-    assert "conversao: Display lidera" in result["answer"]
+    assert "conversão: Display lidera" in result["answer"]
     assert "receita: Search lidera" in result["answer"]
     llm_service.parse_question.assert_not_called()
 
@@ -242,6 +242,30 @@ def test_parse_question_resolves_contextual_priority_without_llm() -> None:
     assert "maior receita" in result["answer"]
     assert "maior volume" in result["answer"]
     assert "Display" in result["answer"]
+    llm_service.parse_question.assert_not_called()
+
+
+def test_parse_question_resolves_contextual_focus_rationale_without_llm() -> None:
+    llm_service = Mock()
+
+    result = parse_question(
+        {
+            "question": (
+                "Voce pode me trazer um porque de focar no Search "
+                "alem do desempenho dele?"
+            ),
+            "conversation_history": _comparison_history(),
+        },
+        llm_service=llm_service,
+    )
+
+    assert result["tool_name"] is None
+    assert result["intent"] == "recommendation"
+    assert "Focar em Search" in result["answer"]
+    assert "demanda ativa" in result["answer"]
+    assert "lidera em receita" in result["answer"]
+    assert "CPA/CAC ou ROAS" in result["answer"]
+    assert "vendas recorrentes" not in result["answer"]
     llm_service.parse_question.assert_not_called()
 
 
