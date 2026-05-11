@@ -93,7 +93,8 @@ Antes de rodar o backend, sincronize os dados do BigQuery para o cache local:
 python scripts/sync_bigquery_cache.py
 ```
 
-Isso vai preencher `data/glacier_cache.db` com dados analíticos para evitar latência de query no BigQuery.
+Esse script gera snapshots analíticos usados pelo dashboard e pode reduzir a latência durante o desenvolvimento. **tem a opçao de rodar o backend e esse script rodar automaticamente**.
+
 
 ### 6️⃣ Rodar Backend
 
