@@ -1,4 +1,5 @@
 import type {
+  AskRequest,
   AskResponse,
   CacheStatusResponse,
   ConversationMessage,
@@ -10,8 +11,20 @@ const API_BASE_URL =
 const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API === "true";
 
 const MOCK_RESPONSE: AskResponse = {
+  conversation_id: "mock-conversation",
   answer:
     "Organic foi o canal com melhor performance nos ultimos 30 dias, priorizando conversion_rate e usando revenue como desempate. Nao ha ROI real porque o dataset nao possui custo de midia.",
+  thinking_mode: false,
+  metadata: {
+    tool_used: "get_channel_performance_summary",
+    reflection_used: false,
+    reflection_score: null,
+    fallback_used: false,
+    total_time_ms: 600,
+    reflection_time_ms: null,
+    tokens_used: null,
+    cost_estimate: null,
+  },
   used_tool: "get_channel_performance_summary",
   data: [
     {
@@ -152,14 +165,39 @@ export async function fetchDashboardOverview(
   return (await response.json()) as DashboardOverviewResponse;
 }
 
+type AskQuestionOptions = {
+  conversationId?: string;
+  thinkingMode?: boolean;
+  conversationHistory?: ConversationMessage[];
+};
+
 export async function askQuestion(
   question: string,
-  conversationHistory: ConversationMessage[] = [],
+  options: AskQuestionOptions | ConversationMessage[] = {},
 ): Promise<AskResponse> {
+  const normalizedOptions = Array.isArray(options)
+    ? { conversationHistory: options }
+    : options;
+  const conversationId = normalizedOptions.conversationId ?? "default";
+  const thinkingMode = normalizedOptions.thinkingMode ?? false;
+  const conversationHistory = normalizedOptions.conversationHistory ?? [];
+
   if (USE_MOCK_API) {
     await new Promise((resolve) => setTimeout(resolve, 600));
     return {
       ...MOCK_RESPONSE,
+      conversation_id: conversationId,
+      thinking_mode: thinkingMode,
+      metadata: {
+        tool_used: MOCK_RESPONSE.metadata?.tool_used ?? null,
+        reflection_used: thinkingMode,
+        reflection_score: thinkingMode ? 8 : null,
+        fallback_used: MOCK_RESPONSE.metadata?.fallback_used ?? false,
+        total_time_ms: thinkingMode ? 1600 : 600,
+        reflection_time_ms: thinkingMode ? 1000 : null,
+        tokens_used: MOCK_RESPONSE.metadata?.tokens_used ?? null,
+        cost_estimate: MOCK_RESPONSE.metadata?.cost_estimate ?? null,
+      },
       answer:
         question.length > 0
           ? MOCK_RESPONSE.answer
@@ -173,9 +211,12 @@ export async function askQuestion(
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
+      conversation_id: conversationId,
+      message: question,
       question,
+      thinking_mode: thinkingMode,
       conversation_history: conversationHistory,
-    }),
+    } satisfies AskRequest),
   });
 
   const payload = (await response.json()) as Partial<AskResponse> & { error?: string };

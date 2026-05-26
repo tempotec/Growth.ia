@@ -5,13 +5,17 @@ from __future__ import annotations
 from functools import lru_cache
 
 from langgraph.graph import END, START, StateGraph
-
+x
 from app.agent.nodes import (
     execute_tool,
     generate_answer,
     parse_question,
+    reflect_answer,
+    revise_answer,
     route_to_tool,
     should_execute_tool,
+    should_reflect,
+    should_revise,
 )
 from app.agent.state import AgentState
 from app.services.analytics_read_service import AnalyticsReadService
@@ -47,6 +51,14 @@ def build_agent_graph(
         "generate_answer",
         lambda state: generate_answer(state, llm_service=llm_service),
     )
+    graph.add_node(
+        "reflect_answer",
+        lambda state: reflect_answer(state, llm_service=llm_service),
+    )
+    graph.add_node(
+        "revise_answer",
+        lambda state: revise_answer(state, llm_service=llm_service),
+    )
 
     graph.add_edge(START, "parse_question")
     graph.add_edge("parse_question", "route_to_tool")
@@ -59,7 +71,23 @@ def build_agent_graph(
         },
     )
     graph.add_edge("execute_tool", "generate_answer")
-    graph.add_edge("generate_answer", END)
+    graph.add_conditional_edges(
+        "generate_answer",
+        should_reflect,
+        {
+            "reflect_answer": "reflect_answer",
+            "end": END,
+        },
+    )
+    graph.add_conditional_edges(
+        "reflect_answer",
+        should_revise,
+        {
+            "revise_answer": "revise_answer",
+            "end": END,
+        },
+    )
+    graph.add_edge("revise_answer", END)
     return graph.compile()
 
 
@@ -73,6 +101,7 @@ def get_agent_graph():
 def run_agent_question(
     question: str,
     conversation_history: list[dict] | None = None,
+    thinking_mode: bool = False,
 ) -> AgentState:
     """Execute the compiled graph for a single natural-language question."""
 
@@ -81,5 +110,6 @@ def run_agent_question(
         {
             "question": question,
             "conversation_history": conversation_history or [],
+            "thinking_mode": thinking_mode,
         }
     )

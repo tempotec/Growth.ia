@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Callable
 
 from app.agent.answer_style import detect_answer_style, limit_sentences
@@ -9,12 +10,14 @@ from app.agent.contextual_followup import resolve_contextual_followup
 from app.agent.performance_answer import build_best_performance_answer
 from app.agent.scope_fallback import resolve_scope_fallback
 from app.agent.state import AgentState
+from app.core.logging import elapsed_ms, get_logger, log_event, start_timer
 from app.repositories.local_cache_repository import LocalCacheSnapshotNotFoundError
 from app.services.analytics_read_service import AnalyticsReadService
 from app.services.llm_service import LLMService, LLMServiceError
 from app.tools import TOOL_REGISTRY
 
 ToolCallable = Callable[..., object]
+logger = get_logger(__name__)
 
 
 def parse_question(
@@ -214,10 +217,131 @@ def generate_answer(
     return {"answer": answer}
 
 
+def reflect_answer(
+    state: AgentState,
+    llm_service: LLMService | None = None,
+) -> AgentState:
+    """Critique the generated answer internally for thinking mode."""
+
+    initial_answer = state.get("answer") or ""
+    if not initial_answer:
+        return {
+            "initial_answer": initial_answer,
+            "reflection_used": False,
+            "fallback_used": True,
+            "reflection_error": "missing_initial_answer",
+        }
+
+    service = llm_service or LLMService()
+    request_start = start_timer()
+    try:
+        critique = service.reflect_answer(
+            question=state["question"],
+            intent=state.get("intent"),
+            tool_result=state.get("tool_result"),
+            initial_answer=initial_answer,
+            conversation_history=state.get("conversation_history", []),
+        )
+    except (LLMServiceError, Exception) as exc:
+        reflection_time_ms = elapsed_ms(request_start)
+        log_event(
+            logger,
+            logging.WARNING,
+            "agent_reflection_failed",
+            intent=state.get("intent"),
+            duration_ms=reflection_time_ms,
+        )
+        return {
+            "initial_answer": initial_answer,
+            "reflection_used": False,
+            "fallback_used": True,
+            "reflection_error": str(exc),
+            "reflection_time_ms": reflection_time_ms,
+            "answer": initial_answer,
+        }
+
+    reflection_time_ms = elapsed_ms(request_start)
+    return {
+        "initial_answer": initial_answer,
+        "critique": critique,
+        "reflection_score": critique.get("score"),
+        "reflection_time_ms": reflection_time_ms,
+        "reflection_error": None,
+    }
+
+
+def revise_answer(
+    state: AgentState,
+    llm_service: LLMService | None = None,
+) -> AgentState:
+    """Revise the answer once using the internal critique."""
+
+    initial_answer = state.get("initial_answer") or state.get("answer") or ""
+    critique = state.get("critique")
+    if not initial_answer or not critique:
+        return {
+            "answer": initial_answer,
+            "reflection_used": False,
+            "fallback_used": True,
+            "reflection_error": "missing_critique",
+        }
+
+    service = llm_service or LLMService()
+    try:
+        revised_answer = service.revise_answer(
+            question=state["question"],
+            intent=state.get("intent"),
+            tool_result=state.get("tool_result"),
+            initial_answer=initial_answer,
+            critique=critique,
+            conversation_history=state.get("conversation_history", []),
+        )
+    except (LLMServiceError, Exception) as exc:
+        log_event(
+            logger,
+            logging.WARNING,
+            "agent_revision_failed",
+            intent=state.get("intent"),
+            reflection_score=state.get("reflection_score"),
+        )
+        return {
+            "answer": initial_answer,
+            "reflection_used": False,
+            "fallback_used": True,
+            "reflection_error": str(exc),
+        }
+
+    revised_answer = limit_sentences(revised_answer, state.get("max_sentences"))
+    return {
+        "answer": revised_answer,
+        "reflection_used": True,
+        "fallback_used": False,
+        "reflection_error": None,
+    }
+
+
 def should_execute_tool(state: AgentState) -> str:
     """Decide whether the workflow should execute a data tool."""
 
     return "execute_tool" if state.get("tool_name") else "generate_answer"
+
+
+def should_reflect(state: AgentState) -> str:
+    """Decide whether the workflow should run the optional reflection pass."""
+
+    if not state.get("thinking_mode"):
+        return "end"
+    if state.get("error"):
+        return "end"
+    if not state.get("answer"):
+        return "end"
+    return "reflect_answer"
+
+
+def should_revise(state: AgentState) -> str:
+    """Decide whether a critique is available for answer revision."""
+
+    return "revise_answer" if state.get("critique") else "end"
 
 
 def _filter_tool_result_to_mentioned_sources(

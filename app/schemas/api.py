@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.schemas.analytics import AllowedTrafficSource, DateRange, SupportedIntent
 
@@ -44,17 +44,68 @@ class ConversationMessage(BaseModel):
 class AskRequest(BaseModel):
     """Input payload for the /ask endpoint."""
 
+    conversation_id: str = Field(
+        default="default",
+        min_length=1,
+        description="Conversation identifier used to persist chat context.",
+    )
+    message: str = Field(..., min_length=1, description="User natural language query.")
     question: str = Field(..., min_length=1, description="User natural language query.")
+    thinking_mode: bool = Field(
+        default=False,
+        description="When true, run one internal reflection pass before answering.",
+    )
     conversation_history: list[ConversationMessage] = Field(
         default_factory=list,
         description="Recent user/assistant messages for conversational context.",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def sync_message_and_question(cls, data: object) -> object:
+        """Support both the legacy question field and the new message contract."""
+
+        if not isinstance(data, dict):
+            return data
+
+        payload = dict(data)
+        question = payload.get("question")
+        message = payload.get("message")
+        if question is None and message is not None:
+            payload["question"] = message
+        if message is None and question is not None:
+            payload["message"] = question
+        return payload
+
+
+class AskExecutionMetadata(BaseModel):
+    """Internal execution metadata returned for observability."""
+
+    tool_used: str | None = None
+    reflection_used: bool = False
+    reflection_score: int | None = None
+    fallback_used: bool = False
+    total_time_ms: float | None = None
+    reflection_time_ms: float | None = None
+    tokens_used: int | None = None
+    cost_estimate: float | None = None
+
+
+class ReflectionCritique(BaseModel):
+    """Structured internal critique for the reflective answer pass."""
+
+    score: int = Field(default=0, ge=0, le=10)
+    issues: list[str] = Field(default_factory=list)
+    recommendation: str = ""
+
 
 class AskResponse(BaseModel):
     """Output payload for the /ask endpoint."""
 
+    conversation_id: str | None = None
     answer: str
+    thinking_mode: bool = False
+    metadata: AskExecutionMetadata | None = None
     used_tool: str | None = None
     data: dict | list[dict] | None = None
     error: str | None = None

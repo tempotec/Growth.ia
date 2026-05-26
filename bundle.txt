@@ -1,0 +1,66 @@
+================================================================================
+GLACIER AI - DEPENDENCY BUNDLE
+Generated: 2026-05-15
+Project: Agente Autônomo de Analytics
+================================================================================
+
+📦 BACKEND DEPENDENCIES (Python)
+================================================================================
+
+Core Framework & Server:
+  - fastapi==0.115.0
+  - uvicorn[standard]==0.30.6
+  - pydantic==2.9.2
+  - pydantic-settings==2.5.2
+
+AI & LLM:
+  - langgraph==0.2.39
+  - langchain==0.3.3
+  - langchain-openai==0.2.2
+  - openai==1.51.0
+
+Database & Data:
+  - google-cloud-bigquery==3.26.0
+
+Utilities:
+  - python-dotenv==1.0.1
+
+Testing:
+  - pytest==9.0.2
+  - pytest-mock==3.15.1
+  - httpx==0.27.2
+
+================================================================================
+📦 FRONTEND DEPENDENCIES (Node.js)
+================================================================================
+
+Runtime Dependencies:
+  - next@15.3.3
+  - react@19.1.0
+  - react-dom@19.1.0
+
+Development Dependencies:
+  - @types/node@22.15.17
+  - @types/react@19.1.5
+  - @types/react-dom@19.1.5
+  - autoprefixer@10.4.21
+  - postcss@8.5.3
+  - tailwindcss@3.4.17
+  - typescript@5.8.3
+
+================================================================================
+SUMMARY
+================================================================================
+
+Total Python Packages: 13
+Total Node Packages (Runtime): 3
+Total Node Packages (Dev): 8
+Total Node Packages: 11
+
+Key Versions:
+  - Python: 3.10+
+  - Node: Latest (Next.js 15.3.3)
+  - LLM: OpenAI (via langchain-openai 0.2.2)
+  - Database: Google BigQuery 3.26.0
+
+================================================================================

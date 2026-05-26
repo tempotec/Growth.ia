@@ -29,10 +29,10 @@ type ContractCard = {
 };
 
 const navItems = [
-  { label: "Dashboard", active: true },
-  { label: "Análises", active: false },
-  { label: "Relatórios", active: false },
-  { label: "Configurações", active: false },
+  { label: "Dashboard", href: "/", active: true },
+  { label: "Chat", href: "/chat", active: false },
+  { label: "Relatorios", href: "#", active: false },
+  { label: "Configuracoes", href: "#", active: false },
 ];
 
 const CHANNEL_COLORS: Record<string, string> = {
@@ -599,8 +599,9 @@ export default function HomePage() {
             <span className="text-xl font-semibold tracking-tight text-ink">Glacier AI</span>
             <div className="hidden items-center gap-6 md:flex">
               {navItems.map((item) => (
-                <span
+                <a
                   key={item.label}
+                  href={item.href}
                   className={`border-b-2 pb-1 text-sm font-medium transition-colors ${
                     item.active
                       ? "border-coral text-ink"
@@ -608,7 +609,7 @@ export default function HomePage() {
                   }`}
                 >
                   {item.label}
-                </span>
+                </a>
               ))}
             </div>
           </div>

@@ -41,12 +41,29 @@ export type ConversationMessage = {
 };
 
 export type AskRequest = {
+  conversation_id: string;
+  message: string;
   question: string;
+  thinking_mode: boolean;
   conversation_history?: ConversationMessage[];
 };
 
+export type AskExecutionMetadata = {
+  tool_used?: string | null;
+  reflection_used: boolean;
+  reflection_score?: number | null;
+  fallback_used: boolean;
+  total_time_ms?: number | null;
+  reflection_time_ms?: number | null;
+  tokens_used?: number | null;
+  cost_estimate?: number | null;
+};
+
 export type AskResponse = {
+  conversation_id?: string | null;
   answer: string;
+  thinking_mode: boolean;
+  metadata?: AskExecutionMetadata | null;
   used_tool: string | null;
   data: Record<string, unknown> | Array<Record<string, unknown>> | null;
   error: string | null;
@@ -126,6 +143,7 @@ export type ChatMessage = {
   date_range?: ConversationDateRange | null;
   analytics_context?: AnalyticsContext | null;
   status?: "sending" | "done" | "error";
+  thinking_mode?: boolean;
 };
 
 export type DashboardOverviewResponse = {

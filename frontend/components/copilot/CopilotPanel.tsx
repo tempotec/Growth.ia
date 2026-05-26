@@ -18,23 +18,78 @@ const SUGGESTED_QUESTIONS = [
 ];
 const OUT_OF_SCOPE_ERROR = "unsupported_intent";
 const CONVERSATION_HISTORY_LIMIT = 10;
+const CONVERSATION_STORAGE_KEY = "glacier-ai:conversation-id";
+const CHAT_STORAGE_PREFIX = "glacier-ai:chat:";
+const NORMAL_STATUS_MESSAGES = [
+  "Entendendo sua solicitacao...",
+  "Consultando dados disponiveis...",
+  "Finalizando...",
+];
+const THINKING_STATUS_MESSAGES = [
+  "Entendendo sua solicitacao...",
+  "Consultando dados disponiveis...",
+  "Gerando primeira versao...",
+  "Revisando qualidade da resposta...",
+  "Ajustando para midia paga...",
+  "Finalizando...",
+];
 
 type CopilotPanelProps = {
   automaticMessages: CopilotMessage[];
   backendStatus: BackendStatus;
   isLoading: boolean;
+  variant?: "panel" | "full";
+  showAutomaticSummary?: boolean;
 };
 
 export function CopilotPanel({
   automaticMessages,
   backendStatus,
   isLoading,
+  variant = "panel",
+  showAutomaticSummary = true,
 }: CopilotPanelProps) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [thinkingMode, setThinkingMode] = useState(false);
+  const [conversationId, setConversationId] = useState("default");
   const scrollRef = useRef<HTMLDivElement>(null);
   const isOnline = backendStatus === "online";
+  const isFull = variant === "full";
+
+  useEffect(() => {
+    const storedConversationId = window.localStorage.getItem(CONVERSATION_STORAGE_KEY);
+    const nextConversationId = storedConversationId || createConversationId();
+    window.localStorage.setItem(CONVERSATION_STORAGE_KEY, nextConversationId);
+    setConversationId(nextConversationId);
+
+    const storedMessages = window.localStorage.getItem(
+      `${CHAT_STORAGE_PREFIX}${nextConversationId}`,
+    );
+    if (!storedMessages) return;
+
+    try {
+      const parsedMessages = JSON.parse(storedMessages) as ChatMessage[];
+      if (Array.isArray(parsedMessages)) {
+        setChatMessages(parsedMessages);
+      }
+    } catch {
+      window.localStorage.removeItem(`${CHAT_STORAGE_PREFIX}${nextConversationId}`);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (conversationId === "default") return;
+
+    const storageKey = `${CHAT_STORAGE_PREFIX}${conversationId}`;
+    if (chatMessages.length === 0) {
+      window.localStorage.removeItem(storageKey);
+      return;
+    }
+
+    window.localStorage.setItem(storageKey, JSON.stringify(chatMessages));
+  }, [chatMessages, conversationId]);
 
   // Auto-scroll para a última mensagem
   useEffect(() => {
@@ -47,6 +102,7 @@ export function CopilotPanel({
     if (!question.trim() || isSending) return;
 
     const conversationHistory = buildConversationHistory(chatMessages);
+    const selectedThinkingMode = thinkingMode;
 
     // Adicionar mensagem do usuário
     const userMessageId = `user-${Date.now()}`;
@@ -56,6 +112,7 @@ export function CopilotPanel({
         id: userMessageId,
         role: "user",
         content: question,
+        thinking_mode: selectedThinkingMode,
         status: "done",
       },
     ]);
@@ -65,18 +122,37 @@ export function CopilotPanel({
 
     // Adicionar loading
     const loadingId = `assistant-loading-${Date.now()}`;
+    const statusMessages = selectedThinkingMode
+      ? THINKING_STATUS_MESSAGES
+      : NORMAL_STATUS_MESSAGES;
+    let statusIndex = 0;
+    const statusTimer = window.setInterval(() => {
+      statusIndex = Math.min(statusIndex + 1, statusMessages.length - 1);
+      setChatMessages((prev) =>
+        prev.map((message) =>
+          message.id === loadingId
+            ? { ...message, content: statusMessages[statusIndex] }
+            : message,
+        ),
+      );
+    }, selectedThinkingMode ? 900 : 800);
     setChatMessages((prev) => [
       ...prev,
       {
         id: loadingId,
         role: "assistant",
-        content: "Analisando dados...",
+        content: statusMessages[0],
+        thinking_mode: selectedThinkingMode,
         status: "sending",
       },
     ]);
 
     try {
-      const response = await askQuestion(question, conversationHistory);
+      const response = await askQuestion(question, {
+        conversationId,
+        thinkingMode: selectedThinkingMode,
+        conversationHistory,
+      });
 
       // Remover loading
       setChatMessages((prev) => prev.filter((msg) => msg.id !== loadingId));
@@ -100,6 +176,7 @@ export function CopilotPanel({
             role: "assistant",
             content: response.answer,
             toolUsed: response.error === OUT_OF_SCOPE_ERROR ? null : response.used_tool,
+            thinking_mode: response.thinking_mode,
             intent: response.intent,
             traffic_source: response.traffic_source,
             mentioned_traffic_sources: response.mentioned_traffic_sources,
@@ -129,6 +206,7 @@ export function CopilotPanel({
         },
       ]);
     } finally {
+      window.clearInterval(statusTimer);
       setIsSending(false);
     }
   };
@@ -142,14 +220,22 @@ export function CopilotPanel({
 
   const handleClearConversation = () => {
     if (isSending) return;
+    const previousConversationId = conversationId;
+    const nextConversationId = createConversationId();
+    window.localStorage.removeItem(`${CHAT_STORAGE_PREFIX}${previousConversationId}`);
+    window.localStorage.setItem(CONVERSATION_STORAGE_KEY, nextConversationId);
+    setConversationId(nextConversationId);
     setChatMessages([]);
     setInputValue("");
   };
 
   const hasMessages = chatMessages.length > 0;
+  const containerClass = isFull
+    ? "flex min-h-[calc(100vh-8rem)] flex-col overflow-hidden rounded-[24px] border border-stone-200 bg-white/85 shadow-xl"
+    : "sticky top-24 flex h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-3xl border border-stone-200 bg-white/80 shadow-xl";
 
   return (
-    <aside className="sticky top-24 flex h-[calc(100vh-7rem)] flex-col overflow-hidden rounded-3xl border border-stone-200 bg-white/80 shadow-xl">
+    <section className={containerClass}>
       {/* Header fixo */}
       <div className="shrink-0 flex items-center justify-between border-b border-borderSoft px-4 py-3">
         <div className="flex items-center gap-3">
@@ -199,7 +285,7 @@ export function CopilotPanel({
           className="custom-scrollbar flex flex-col gap-4 pr-1"
         >
           {/* Mostrar sumário automático se não há mensagens de chat */}
-          {!hasMessages && (
+          {!hasMessages && showAutomaticSummary && (
             <>
               <div className="mb-2 text-xs font-medium text-muted">
                 Resumo automático do overview
@@ -222,7 +308,7 @@ export function CopilotPanel({
           {/* Chat messages */}
           {hasMessages &&
             chatMessages.map((message) => (
-              <ChatMessageBubble key={message.id} message={message} />
+              <ChatMessageBubble key={message.id} message={message} variant={variant} />
             ))}
         </div>
       </div>
@@ -251,6 +337,28 @@ export function CopilotPanel({
 
         {/* Input field */}
         <div className="rounded-[20px] border border-borderSoft bg-white/80 p-2">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setThinkingMode((current) => !current)}
+              disabled={isSending}
+              aria-pressed={thinkingMode}
+              className={`inline-flex h-8 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition-colors disabled:opacity-50 ${
+                thinkingMode
+                  ? "border-blueSoft/70 bg-blueSoft/25 text-ink"
+                  : "border-borderSoft bg-white/70 text-muted hover:border-blueSoft/60 hover:text-ink"
+              }`}
+            >
+              <span className="flex h-4 w-4 items-center justify-center rounded-full border border-current text-[10px]">
+                P
+              </span>
+              Pensar
+            </button>
+            <span className="text-[11px] text-muted">
+              {thinkingMode ? "Modo Pensar" : "Modo rapido"}
+            </span>
+          </div>
+
           <div className="flex items-end gap-2">
             <textarea
               value={inputValue}
@@ -273,8 +381,16 @@ export function CopilotPanel({
           </div>
         </div>
       </div>
-    </aside>
+    </section>
   );
+}
+
+function createConversationId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `conversation-${crypto.randomUUID()}`;
+  }
+
+  return `conversation-${Date.now()}`;
 }
 
 function buildConversationHistory(messages: ChatMessage[]): ConversationMessage[] {
@@ -335,14 +451,21 @@ function AutomaticMessageBubble({ message }: { message: CopilotMessage }) {
   );
 }
 
-function ChatMessageBubble({ message }: { message: ChatMessage }) {
+function ChatMessageBubble({
+  message,
+  variant,
+}: {
+  message: ChatMessage;
+  variant: "panel" | "full";
+}) {
   const isUser = message.role === "user";
   const isError = message.status === "error";
+  const maxWidthClass = variant === "full" ? "max-w-[78%]" : "max-w-xs";
 
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-xs rounded-[20px] bg-blueSoft/30 px-4 py-2 text-sm text-ink">
+        <div className={`${maxWidthClass} rounded-[20px] bg-blueSoft/30 px-4 py-2 text-sm text-ink`}>
           {message.content}
         </div>
       </div>
@@ -351,7 +474,7 @@ function ChatMessageBubble({ message }: { message: ChatMessage }) {
 
   return (
     <div className="flex justify-start">
-      <div className="max-w-xs space-y-2">
+      <div className={`${maxWidthClass} space-y-2`}>
         <div
           className={`rounded-[20px] px-4 py-2 text-sm ${
             isError

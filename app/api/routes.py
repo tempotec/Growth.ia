@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.agent.graph import run_agent_question
 from app.core.cache_config import get_cache_settings
-from app.core.logging import get_logger, log_event, short_text
+from app.core.logging import elapsed_ms, get_logger, log_event, short_text, start_timer
 from app.repositories.local_cache_repository import (
     LocalCacheRepository,
     LocalCacheSnapshotNotFoundError,
@@ -74,38 +74,61 @@ ANALYTICS_METRIC_CONTEXT_BY_TOOL = {
     "get_revenue_by_source": "revenue_by_source",
     "get_users_by_source": "users_by_source",
 }
+CONVERSATION_HISTORY_LIMIT = 20
+CONVERSATION_STORE: dict[str, list[dict[str, Any]]] = {}
 
 
 @router.post("/ask", response_model=AskResponse)
 def ask(payload: AskRequest) -> AskResponse:
     """Execute the Glacier AI agent for a validated question."""
 
+    request_start = start_timer()
     log_event(
         logger,
         logging.INFO,
         "ask_request_received",
+        conversation_id=payload.conversation_id,
         question_preview=short_text(payload.question),
+        thinking_mode=payload.thinking_mode,
     )
     if _is_simple_greeting(payload.question):
         log_event(logger, logging.INFO, "ask_greeting_handled")
-        return AskResponse(
+        response = AskResponse(
+            conversation_id=payload.conversation_id,
             answer=GREETING_MESSAGE,
+            thinking_mode=payload.thinking_mode,
+            metadata=_execution_metadata(
+                {},
+                total_time_ms=elapsed_ms(request_start),
+                thinking_mode=payload.thinking_mode,
+            ),
             used_tool=None,
             data=None,
             error=None,
         )
+        _append_conversation_turn(payload, response)
+        return response
 
-    conversation_history = _serialize_conversation_history(payload)
+    conversation_history = _resolve_conversation_history(payload)
     try:
-        final_state = run_agent_question(
-            payload.question,
-            conversation_history=conversation_history,
-        )
+        if payload.thinking_mode:
+            final_state = run_agent_question(
+                payload.question,
+                conversation_history=conversation_history,
+                thinking_mode=True,
+            )
+        else:
+            final_state = run_agent_question(
+                payload.question,
+                conversation_history=conversation_history,
+            )
     except Exception as exc:
         log_event(
             logger,
             logging.ERROR,
             "ask_request_failed",
+            conversation_id=payload.conversation_id,
+            thinking_mode=payload.thinking_mode,
             error_type=type(exc).__name__,
         )
         raise HTTPException(
@@ -113,18 +136,33 @@ def ask(payload: AskRequest) -> AskResponse:
             detail=GENERIC_INTERNAL_MESSAGE,
         ) from exc
 
-    response, status_code = _build_response(final_state)
+    total_time_ms = elapsed_ms(request_start)
+    response, status_code = _build_response(
+        final_state,
+        conversation_id=payload.conversation_id,
+        thinking_mode=payload.thinking_mode,
+        total_time_ms=total_time_ms,
+    )
     log_event(
         logger,
         logging.INFO,
         "ask_request_completed",
+        conversation_id=payload.conversation_id,
         intent=final_state.get("intent"),
         tool_name=final_state.get("tool_name"),
+        thinking_mode=payload.thinking_mode,
+        reflection_used=final_state.get("reflection_used"),
+        reflection_score=final_state.get("reflection_score"),
+        fallback_used=final_state.get("fallback_used"),
+        total_time_ms=total_time_ms,
+        tokens_used=final_state.get("tokens_used"),
+        cost_estimate=final_state.get("cost_estimate"),
         http_status=status_code,
         controlled_error=bool(response.error),
     )
     if status_code != status.HTTP_200_OK:
         raise HTTPException(status_code=status_code, detail=response.model_dump())
+    _append_conversation_turn(payload, response)
     return response
 
 
@@ -178,21 +216,35 @@ def dashboard_overview(
     return DashboardOverviewService().build_overview(period=period, channel=channel)
 
 
-def _build_response(state: dict) -> tuple[AskResponse, int]:
+def _build_response(
+    state: dict,
+    *,
+    conversation_id: str,
+    thinking_mode: bool,
+    total_time_ms: float,
+) -> tuple[AskResponse, int]:
     """Translate the final agent state into the public HTTP response contract."""
 
     intent = state.get("intent")
     out_of_scope_reason = state.get("out_of_scope_reason")
     error = state.get("error")
-    metadata = _response_metadata(state)
+    parse_metadata = _response_metadata(state)
+    execution_metadata = _execution_metadata(
+        state,
+        total_time_ms=total_time_ms,
+        thinking_mode=thinking_mode,
+    )
 
     if intent == "out_of_scope" and out_of_scope_reason == OUT_OF_SCOPE_ERROR:
         response = AskResponse(
+            conversation_id=conversation_id,
             answer=OUT_OF_SCOPE_MESSAGE,
+            thinking_mode=thinking_mode,
+            metadata=execution_metadata,
             used_tool=None,
             data=None,
             error=OUT_OF_SCOPE_ERROR,
-            **metadata,
+            **parse_metadata,
         )
         return response, status.HTTP_200_OK
 
@@ -210,11 +262,14 @@ def _build_response(state: dict) -> tuple[AskResponse, int]:
             response_error = INVALID_DATE_RANGE_MESSAGE
 
         response = AskResponse(
+            conversation_id=conversation_id,
             answer=answer,
+            thinking_mode=thinking_mode,
+            metadata=execution_metadata,
             used_tool=state.get("tool_name"),
             data=state.get("tool_result"),
             error=response_error,
-            **metadata,
+            **parse_metadata,
         )
         if error == LOCAL_CACHE_SNAPSHOT_NOT_FOUND:
             return response, status.HTTP_503_SERVICE_UNAVAILABLE
@@ -224,14 +279,79 @@ def _build_response(state: dict) -> tuple[AskResponse, int]:
 
     return (
         AskResponse(
+            conversation_id=conversation_id,
             answer=state.get("answer") or "",
+            thinking_mode=thinking_mode,
+            metadata=execution_metadata,
             used_tool=state.get("tool_name"),
             data=state.get("tool_result"),
             error=None,
-            **metadata,
+            **parse_metadata,
         ),
         status.HTTP_200_OK,
     )
+
+
+def _resolve_conversation_history(payload: AskRequest) -> list[dict]:
+    """Return explicit history or the stored history for the conversation id."""
+
+    explicit_history = _serialize_conversation_history(payload)
+    if explicit_history:
+        return explicit_history
+    return CONVERSATION_STORE.get(payload.conversation_id, [])[-10:]
+
+
+def _append_conversation_turn(payload: AskRequest, response: AskResponse) -> None:
+    """Persist a compact in-memory conversation turn for follow-up context."""
+
+    history = CONVERSATION_STORE.setdefault(payload.conversation_id, [])
+    history.append(
+        {
+            "role": "user",
+            "content": payload.question,
+        }
+    )
+
+    assistant_message: dict[str, Any] = {
+        "role": "assistant",
+        "content": response.answer,
+    }
+    for key in (
+        "intent",
+        "traffic_source",
+        "mentioned_traffic_sources",
+        "date_range",
+        "analytics_context",
+    ):
+        value = getattr(response, key)
+        if value is not None:
+            if hasattr(value, "model_dump"):
+                assistant_message[key] = value.model_dump(mode="json", exclude_none=True)
+            else:
+                assistant_message[key] = value
+
+    history.append(assistant_message)
+    CONVERSATION_STORE[payload.conversation_id] = history[-CONVERSATION_HISTORY_LIMIT:]
+
+
+def _execution_metadata(
+    state: dict,
+    *,
+    total_time_ms: float,
+    thinking_mode: bool,
+):
+    """Build public execution metadata without exposing internal critique."""
+
+    return {
+        "tool_used": state.get("tool_name"),
+        "reflection_used": bool(state.get("reflection_used")),
+        "reflection_score": state.get("reflection_score"),
+        "fallback_used": bool(state.get("fallback_used")),
+        "total_time_ms": total_time_ms,
+        "reflection_time_ms": state.get("reflection_time_ms"),
+        "tokens_used": state.get("tokens_used"),
+        "cost_estimate": state.get("cost_estimate"),
+    }
 
 
 def _serialize_conversation_history(payload: AskRequest) -> list[dict]:

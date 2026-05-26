@@ -15,8 +15,12 @@ from openai import OpenAI
 from app.agent.prompts import (
     ANSWER_SYSTEM_PROMPT,
     PARSE_SYSTEM_PROMPT,
+    REFLECTION_SYSTEM_PROMPT,
+    REVISION_SYSTEM_PROMPT,
     build_answer_user_prompt,
     build_parse_user_prompt,
+    build_reflection_user_prompt,
+    build_revision_user_prompt,
 )
 from app.core.config import get_settings
 from app.core.logging import elapsed_ms, get_logger, log_event, short_text, start_timer
@@ -279,6 +283,137 @@ class LLMService:
             )
             raise LLMServiceError("Failed to generate final answer with the configured LLM.") from exc
 
+    def reflect_answer(
+        self,
+        *,
+        question: str,
+        intent: str | None,
+        tool_result: Any,
+        initial_answer: str,
+        conversation_history: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Return a structured internal critique for an initial answer."""
+
+        request_start = start_timer()
+        recent_history = conversation_history or []
+        log_event(
+            self._logger,
+            logging.INFO,
+            "llm_reflection_started",
+            model=self._model,
+            intent=intent,
+            question_preview=short_text(question),
+            conversation_turns=len(recent_history),
+        )
+        try:
+            response = self._client.chat.completions.create(
+                model=self._model,
+                temperature=0,
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": REFLECTION_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": build_reflection_user_prompt(
+                            question=question,
+                            intent=intent,
+                            tool_result=tool_result,
+                            initial_answer=initial_answer,
+                            conversation_history=recent_history,
+                        ),
+                    },
+                ],
+            )
+            payload = json.loads(self._extract_content(response))
+            critique = _normalize_reflection_payload(payload)
+            log_event(
+                self._logger,
+                logging.INFO,
+                "llm_reflection_completed",
+                model=self._model,
+                duration_ms=elapsed_ms(request_start),
+                intent=intent,
+                reflection_score=critique["score"],
+            )
+            return critique
+        except Exception as exc:
+            log_event(
+                self._logger,
+                logging.ERROR,
+                "llm_reflection_failed",
+                model=self._model,
+                duration_ms=elapsed_ms(request_start),
+                error_type=type(exc).__name__,
+                intent=intent,
+            )
+            raise LLMServiceError("Failed to reflect on answer with the configured LLM.") from exc
+
+    def revise_answer(
+        self,
+        *,
+        question: str,
+        intent: str | None,
+        tool_result: Any,
+        initial_answer: str,
+        critique: dict[str, Any],
+        conversation_history: list[dict[str, Any]] | None = None,
+    ) -> str:
+        """Revise an initial answer using an internal structured critique."""
+
+        request_start = start_timer()
+        recent_history = conversation_history or []
+        log_event(
+            self._logger,
+            logging.INFO,
+            "llm_revision_started",
+            model=self._model,
+            intent=intent,
+            question_preview=short_text(question),
+            conversation_turns=len(recent_history),
+            reflection_score=critique.get("score"),
+        )
+        try:
+            response = self._client.chat.completions.create(
+                model=self._model,
+                temperature=0,
+                messages=[
+                    {"role": "system", "content": REVISION_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": build_revision_user_prompt(
+                            question=question,
+                            intent=intent,
+                            tool_result=tool_result,
+                            initial_answer=initial_answer,
+                            critique=critique,
+                            conversation_history=recent_history,
+                        ),
+                    },
+                ],
+            )
+            answer = self._extract_content(response).strip()
+            log_event(
+                self._logger,
+                logging.INFO,
+                "llm_revision_completed",
+                model=self._model,
+                duration_ms=elapsed_ms(request_start),
+                intent=intent,
+                reflection_score=critique.get("score"),
+            )
+            return answer
+        except Exception as exc:
+            log_event(
+                self._logger,
+                logging.ERROR,
+                "llm_revision_failed",
+                model=self._model,
+                duration_ms=elapsed_ms(request_start),
+                error_type=type(exc).__name__,
+                intent=intent,
+            )
+            raise LLMServiceError("Failed to revise answer with the configured LLM.") from exc
+
     def validate_connectivity(self) -> str:
         """Run a cheap connectivity check against the configured model."""
 
@@ -329,6 +464,33 @@ class LLMService:
         if not content:
             raise ValueError("LLM response did not include content.")
         return content
+
+
+def _normalize_reflection_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize critique JSON into the internal reflection contract."""
+
+    raw_score = payload.get("score", 0)
+    try:
+        score = int(raw_score)
+    except (TypeError, ValueError):
+        score = 0
+    score = max(0, min(score, 10))
+
+    raw_issues = payload.get("issues", [])
+    if not isinstance(raw_issues, list):
+        raw_issues = [str(raw_issues)]
+
+    issues = [
+        str(issue).strip()
+        for issue in raw_issues
+        if str(issue).strip()
+    ][:8]
+    recommendation = str(payload.get("recommendation") or "").strip()
+    return {
+        "score": score,
+        "issues": issues,
+        "recommendation": recommendation,
+    }
 
 
 def _parse_high_confidence_question(

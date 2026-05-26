@@ -158,6 +158,40 @@ Estilo:
 """
 
 
+REFLECTION_SYSTEM_PROMPT = """Voce e o critico interno do Glacier AI.
+Retorne apenas JSON valido, sem texto adicional.
+Avalie se a resposta inicial e util para uma pessoa gestora de midia paga.
+
+Contrato obrigatorio:
+{
+  "score": 0,
+  "issues": ["..."],
+  "recommendation": "..."
+}
+
+Regras:
+- score deve ser um inteiro de 0 a 10.
+- Aponte problemas concretos, nao comentarios genericos.
+- Verifique se a resposta usou somente os dados disponiveis.
+- Verifique se separou fato, hipotese e recomendacao.
+- Verifique se evitou causalidade falsa e promessas de ROI.
+- Verifique se trouxe insight acionavel e proxima acao.
+- Nao reescreva a resposta final aqui.
+"""
+
+REVISION_SYSTEM_PROMPT = """Voce e o Glacier AI, um Analista Junior de Midia e Growth para e-commerce.
+Reescreva a resposta inicial usando a critica interna como guia.
+
+Regras:
+- Responda sempre em portugues do Brasil.
+- Use somente os dados presentes no payload.
+- Nao invente metricas, canais, periodos ou tendencias.
+- Nao exponha a critica interna, JSON, tool_result, endpoints ou detalhes tecnicos.
+- Preserve uma resposta clara, executiva e acionavel.
+- Termine com uma proxima acao objetiva.
+"""
+
+
 def build_parse_user_prompt(
     question: str,
     today: date | None = None,
@@ -263,6 +297,67 @@ def build_answer_user_prompt(
             "mandatory_structure": mandatory_structure,
             "business_rules": business_rules,
         },
+    }
+    return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def build_reflection_user_prompt(
+    *,
+    question: str,
+    intent: str | None,
+    tool_result: Any,
+    initial_answer: str,
+    conversation_history: list[dict[str, Any]] | None = None,
+) -> str:
+    """Build the internal critique prompt payload."""
+
+    payload = {
+        "question": question,
+        "conversation_history": _normalize_conversation_history(conversation_history),
+        "intent": intent,
+        "tool_result": tool_result,
+        "initial_answer": initial_answer,
+        "evaluation_criteria": [
+            "respondeu diretamente a pergunta",
+            "usou dados reais disponiveis",
+            "evitou inventar informacao",
+            "separou fato, hipotese e recomendacao",
+            "evitou causalidade falsa",
+            "trouxe insight acionavel",
+            "indicou proxima acao pratica",
+            "esta clara para decisao de negocio",
+        ],
+        "output_contract": {
+            "score": "integer 0-10",
+            "issues": ["problema concreto encontrado"],
+            "recommendation": "orientacao objetiva para revisao",
+        },
+    }
+    return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def build_revision_user_prompt(
+    *,
+    question: str,
+    intent: str | None,
+    tool_result: Any,
+    initial_answer: str,
+    critique: dict[str, Any],
+    conversation_history: list[dict[str, Any]] | None = None,
+) -> str:
+    """Build the answer revision prompt payload."""
+
+    payload = {
+        "question": question,
+        "conversation_history": _normalize_conversation_history(conversation_history),
+        "intent": intent,
+        "tool_result": tool_result,
+        "initial_answer": initial_answer,
+        "internal_critique": critique,
+        "revision_goal": (
+            "melhorar utilidade analitica para decisao de midia paga sem "
+            "expor a critica interna"
+        ),
     }
     return json.dumps(payload, ensure_ascii=False, default=str)
 

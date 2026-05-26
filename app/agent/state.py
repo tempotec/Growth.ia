@@ -22,6 +22,16 @@ class AgentState(TypedDict, total=False):
     tool_name: str | None
     tool_args: dict[str, Any]
     tool_result: Any
+    thinking_mode: bool
+    initial_answer: str | None
+    critique: dict[str, Any] | None
+    reflection_score: int | None
+    reflection_used: bool
+    reflection_time_ms: float | None
+    reflection_error: str | None
+    fallback_used: bool
+    tokens_used: int | None
+    cost_estimate: float | None
     answer: str | None
     error: str | None
     out_of_scope_reason: str | None
